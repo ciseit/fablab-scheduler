@@ -3,6 +3,9 @@ from fastapi import FastAPI
 from app.database.connection import Base, engine
 from app.models import technician
 from app.routers import technicians
+from app.routers.collection_campaigns import (
+    router as collection_campaigns_router,
+)
 
 
 Base.metadata.create_all(bind=engine)
@@ -16,6 +19,7 @@ app = FastAPI(
 
 
 app.include_router(technicians.router)
+app.include_router(collection_campaigns_router)
 
 
 @app.get("/")
