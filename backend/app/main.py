@@ -1,9 +1,9 @@
 from fastapi import FastAPI
-
 from app.database.connection import Base, engine
 from app.models import technician
 from app.routers import technicians
-
+from app.models import availability
+from app.routers import availability
 
 Base.metadata.create_all(bind=engine)
 
@@ -16,7 +16,7 @@ app = FastAPI(
 
 
 app.include_router(technicians.router)
-
+app.include_router(availability.router)
 
 @app.get("/")
 def home() -> dict[str, str]:
@@ -31,3 +31,4 @@ def health() -> dict[str, str]:
         "status": "OK",
         "message": "Backend is running successfully",
     }
+
