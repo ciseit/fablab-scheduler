@@ -1,12 +1,18 @@
 from fastapi import FastAPI
+
 from app.database.connection import Base, engine
+
 from app.models import technician
-from app.routers import technicians
 from app.models import availability
+
+from app.routers import technicians
 from app.routers import availability
 
-Base.metadata.create_all(bind=engine)
+from app.routers.collection_campaigns import (
+    router as collection_campaigns_router,
+)
 
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="FABLAB Scheduler API",
@@ -14,9 +20,10 @@ app = FastAPI(
     version="0.1.0",
 )
 
-
 app.include_router(technicians.router)
 app.include_router(availability.router)
+app.include_router(collection_campaigns_router)
+
 
 @app.get("/")
 def home() -> dict[str, str]:
@@ -31,4 +38,3 @@ def health() -> dict[str, str]:
         "status": "OK",
         "message": "Backend is running successfully",
     }
-
