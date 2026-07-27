@@ -17,6 +17,19 @@ router = APIRouter(
 collection_campaigns = []
 
 
+def generate_unique_public_token() -> str:
+    existing_tokens = {
+        campaign["public_token"]
+        for campaign in collection_campaigns
+    }
+
+    while True:
+        token = secrets.token_urlsafe(12)
+
+        if token not in existing_tokens:
+            return token
+
+
 @router.get(
     "/",
     response_model=list[CollectionCampaignResponse],
@@ -41,7 +54,7 @@ def create_collection_campaign(
 
     new_campaign = {
         "id": len(collection_campaigns) + 1,
-        "public_token": secrets.token_urlsafe(12),
+        "public_token": generate_unique_public_token(),
         "status": "draft",
         **campaign_data.model_dump(),
     }
