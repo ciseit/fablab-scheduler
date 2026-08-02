@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 
 from app.database.connection import Base, engine
+from app.models import availability
 from app.models import collection_campaign
 from app.models import technician
+from app.routers import availability as availability_router
 from app.routers import collection_campaigns
 from app.routers import technicians
 
@@ -20,6 +22,7 @@ app = FastAPI(
 
 # Register API routers.
 app.include_router(technicians.router)
+app.include_router(availability_router.router)
 app.include_router(collection_campaigns.router)
 
 
