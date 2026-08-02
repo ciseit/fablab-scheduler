@@ -25,6 +25,30 @@ def get_collection_campaigns(
     return collection_campaign_service.get_collection_campaigns(db)
 
 
+@router.get(
+    "/public/{public_token}",
+    response_model=CollectionCampaignResponse,
+)
+def get_public_collection_campaign(
+    public_token: str,
+    db: Session = Depends(get_db),
+):
+    campaign = (
+        collection_campaign_service.get_collection_campaign_by_public_token(
+            db,
+            public_token,
+        )
+    )
+
+    if campaign is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Availability Request not found",
+        )
+
+    return campaign
+
+
 @router.post(
     "/",
     response_model=CollectionCampaignResponse,
