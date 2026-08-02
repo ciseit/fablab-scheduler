@@ -1,13 +1,13 @@
 from fastapi import FastAPI
 
 from app.database.connection import Base, engine
+from app.models import collection_campaign
 from app.models import technician
+from app.routers import collection_campaigns
 from app.routers import technicians
-from app.routers.collection_campaigns import (
-    router as collection_campaigns_router,
-)
 
 
+# Create database tables for all imported SQLAlchemy models.
 Base.metadata.create_all(bind=engine)
 
 
@@ -18,8 +18,9 @@ app = FastAPI(
 )
 
 
+# Register API routers.
 app.include_router(technicians.router)
-app.include_router(collection_campaigns_router)
+app.include_router(collection_campaigns.router)
 
 
 @app.get("/")

@@ -1,11 +1,12 @@
-import secrets
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
-from fastapi import APIRouter, HTTPException, status
-
+from app.database.connection import get_db
 from app.schemas.collection_campaign import (
     CollectionCampaignCreate,
     CollectionCampaignResponse,
 )
+from app.services import collection_campaign_service
 
 
 router = APIRouter(
@@ -14,28 +15,14 @@ router = APIRouter(
 )
 
 
-collection_campaigns = []
-
-
-def generate_unique_public_token() -> str:
-    existing_tokens = {
-        campaign["public_token"]
-        for campaign in collection_campaigns
-    }
-
-    while True:
-        token = secrets.token_urlsafe(12)
-
-        if token not in existing_tokens:
-            return token
-
-
 @router.get(
     "/",
     response_model=list[CollectionCampaignResponse],
 )
-def get_collection_campaigns():
-    return collection_campaigns
+def get_collection_campaigns(
+    db: Session = Depends(get_db),
+):
+    return collection_campaign_service.get_collection_campaigns(db)
 
 
 @router.post(
@@ -45,6 +32,7 @@ def get_collection_campaigns():
 )
 def create_collection_campaign(
     campaign_data: CollectionCampaignCreate,
+    db: Session = Depends(get_db),
 ):
     if campaign_data.closes_at <= campaign_data.opens_at:
         raise HTTPException(
@@ -52,13 +40,7 @@ def create_collection_campaign(
             detail="Closing time must be later than opening time.",
         )
 
-    new_campaign = {
-        "id": len(collection_campaigns) + 1,
-        "public_token": generate_unique_public_token(),
-        "status": "draft",
-        **campaign_data.model_dump(),
-    }
-
-    collection_campaigns.append(new_campaign)
-
-    return new_campaign
+    return collection_campaign_service.create_collection_campaign(
+        db,
+        campaign_data,
+    )
