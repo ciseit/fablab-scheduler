@@ -1,8 +1,12 @@
 import secrets
 
+from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.models.availability import Availability
 from app.models.collection_campaign import CollectionCampaign
+from app.models.technician import Technician
 from app.schemas.collection_campaign import CollectionCampaignCreate
 
 
@@ -20,10 +24,129 @@ def generate_unique_public_token(db: Session) -> str:
             return token
 
 
+def get_total_active_technicians(db: Session) -> int:
+    total_technicians = (
+        db.query(func.count(Technician.id))
+        .filter(Technician.status == "active")
+        .scalar()
+    )
+
+    return int(total_technicians or 0)
+
+
 def get_collection_campaigns(
     db: Session,
-) -> list[CollectionCampaign]:
-    return db.query(CollectionCampaign).all()
+) -> list[dict]:
+    campaigns = db.query(CollectionCampaign).all()
+
+    total_active_technicians = get_total_active_technicians(db)
+
+    campaign_counts = (
+        db.query(
+            Availability.campaign_id,
+            func.count(
+                func.distinct(Availability.technician_id)
+            ).label("submitted_count"),
+            func.count(Availability.id).label(
+                "total_availability_blocks"
+            ),
+        )
+        .group_by(Availability.campaign_id)
+        .all()
+    )
+
+    counts_by_campaign = {
+        campaign_id: {
+            "submitted_count": int(submitted_count or 0),
+            "total_availability_blocks": int(
+                total_availability_blocks or 0
+            ),
+        }
+        for (
+            campaign_id,
+            submitted_count,
+            total_availability_blocks,
+        ) in campaign_counts
+    }
+
+    campaign_responses = []
+
+    for campaign in campaigns:
+        counts = counts_by_campaign.get(
+            campaign.id,
+            {
+                "submitted_count": 0,
+                "total_availability_blocks": 0,
+            },
+        )
+
+        campaign_responses.append(
+            {
+                "id": campaign.id,
+                "name": campaign.name,
+                "semester": campaign.semester,
+                "opens_at": campaign.opens_at,
+                "closes_at": campaign.closes_at,
+                "minimum_weekly_hours": (
+                    campaign.minimum_weekly_hours
+                ),
+                "public_token": campaign.public_token,
+                "status": campaign.status,
+                "submitted_count": counts["submitted_count"],
+                "total_technicians": total_active_technicians,
+                "total_availability_blocks": counts[
+                    "total_availability_blocks"
+                ],
+            }
+        )
+
+    return campaign_responses
+
+
+def get_collection_campaign_submission_summary(
+    db: Session,
+    campaign_id: int,
+) -> dict:
+    campaign = (
+        db.query(CollectionCampaign)
+        .filter(CollectionCampaign.id == campaign_id)
+        .first()
+    )
+
+    if campaign is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Availability Request not found",
+        )
+
+    unique_technicians_submitted = (
+        db.query(
+            func.count(
+                func.distinct(Availability.technician_id)
+            )
+        )
+        .filter(Availability.campaign_id == campaign_id)
+        .scalar()
+    )
+
+    total_availability_blocks = (
+        db.query(func.count(Availability.id))
+        .filter(Availability.campaign_id == campaign_id)
+        .scalar()
+    )
+
+    total_active_technicians = get_total_active_technicians(db)
+
+    return {
+        "campaign_id": campaign.id,
+        "unique_technicians_submitted": int(
+            unique_technicians_submitted or 0
+        ),
+        "total_technicians": total_active_technicians,
+        "total_availability_blocks": int(
+            total_availability_blocks or 0
+        ),
+    }
 
 
 def get_collection_campaign_by_public_token(
@@ -46,7 +169,9 @@ def create_collection_campaign(
         semester=campaign_data.semester,
         opens_at=campaign_data.opens_at,
         closes_at=campaign_data.closes_at,
-        minimum_weekly_hours=campaign_data.minimum_weekly_hours,
+        minimum_weekly_hours=(
+            campaign_data.minimum_weekly_hours
+        ),
         public_token=generate_unique_public_token(db),
         status="draft",
     )
