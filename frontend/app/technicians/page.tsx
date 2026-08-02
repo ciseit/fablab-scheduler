@@ -5,7 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import AppLayout from "@/components/layout/AppLayout";
 import TechnicianToolbar from "@/components/technicians/TechnicianToolbar";
 import TechnicianTable from "@/components/technicians/TechnicianTable";
-import AddTechnicianDialog from "@/components/technicians/AddTechnicianDialog";
+import AddTechnicianDialog, {
+  type TechnicianFormData,
+} from "@/components/technicians/AddTechnicianDialog";
 
 import {
   createTechnician,
@@ -46,13 +48,13 @@ function mapApiTechnician(
 }
 
 function mapTechnicianForApi(
-  data: Partial<Technician>
+  data: TechnicianFormData
 ) {
   return {
     name: data.name,
     email: data.email,
     designation: data.designation,
-    status: data.status?.toLowerCase(),
+    status: data.status.toLowerCase(),
     weekly_target_hours: data.weeklyTargetHours,
     notes: data.assignmentName || null,
   };
@@ -158,7 +160,7 @@ export default function TechniciansPage() {
   }
 
   async function saveTechnician(
-    data: Technician
+    data: TechnicianFormData
   ) {
     setError("");
 
