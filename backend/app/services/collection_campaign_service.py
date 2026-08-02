@@ -20,8 +20,21 @@ def generate_unique_public_token(db: Session) -> str:
             return token
 
 
-def get_collection_campaigns(db: Session) -> list[CollectionCampaign]:
+def get_collection_campaigns(
+    db: Session,
+) -> list[CollectionCampaign]:
     return db.query(CollectionCampaign).all()
+
+
+def get_collection_campaign_by_public_token(
+    db: Session,
+    public_token: str,
+) -> CollectionCampaign | None:
+    return (
+        db.query(CollectionCampaign)
+        .filter(CollectionCampaign.public_token == public_token)
+        .first()
+    )
 
 
 def create_collection_campaign(
