@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -6,8 +6,16 @@ from app.schemas.availability import (
     AvailabilityCreate,
     AvailabilityResponse,
     AvailabilityUpdate,
+    PublicAvailabilitySubmission,
 )
-from app.services import availability_service
+from app.services.availability_service import (
+    create_availability,
+    create_public_availability_submission,
+    delete_availability,
+    get_availabilities_for_technician,
+    update_availability,
+)
+
 
 router = APIRouter(
     prefix="/availability",
@@ -18,38 +26,48 @@ router = APIRouter(
 @router.post(
     "/technicians/{technician_id}",
     response_model=AvailabilityResponse,
+    status_code=status.HTTP_200_OK,
 )
-def create_availability(
+def create_availability_endpoint(
     technician_id: int,
     availability: AvailabilityCreate,
     db: Session = Depends(get_db),
 ):
-    result = availability_service.create_availability(
-        db,
-        technician_id,
-        availability,
+    return create_availability(
+        db=db,
+        technician_id=technician_id,
+        availability=availability,
     )
 
-    if result is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Technician not found",
-        )
 
-    return result
+@router.post(
+    "/public/{public_token}",
+    response_model=list[AvailabilityResponse],
+    status_code=status.HTTP_201_CREATED,
+)
+def create_public_availability_submission_endpoint(
+    public_token: str,
+    submission: PublicAvailabilitySubmission,
+    db: Session = Depends(get_db),
+):
+    return create_public_availability_submission(
+        db=db,
+        public_token=public_token,
+        submission=submission,
+    )
 
 
 @router.get(
     "/technicians/{technician_id}",
     response_model=list[AvailabilityResponse],
 )
-def get_availability(
+def get_availabilities_for_technician_endpoint(
     technician_id: int,
     db: Session = Depends(get_db),
 ):
-    return availability_service.get_availability(
-        db,
-        technician_id,
+    return get_availabilities_for_technician(
+        db=db,
+        technician_id=technician_id,
     )
 
 
@@ -57,44 +75,27 @@ def get_availability(
     "/{availability_id}",
     response_model=AvailabilityResponse,
 )
-def update_availability(
+def update_availability_endpoint(
     availability_id: int,
-    availability: AvailabilityUpdate,
+    availability_update: AvailabilityUpdate,
     db: Session = Depends(get_db),
 ):
-    result = availability_service.update_availability(
-        db,
-        availability_id,
-        availability,
+    return update_availability(
+        db=db,
+        availability_id=availability_id,
+        availability_update=availability_update,
     )
-
-    if result is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Availability not found",
-        )
-
-    return result
 
 
 @router.delete(
     "/{availability_id}",
+    response_model=AvailabilityResponse,
 )
-def delete_availability(
+def delete_availability_endpoint(
     availability_id: int,
     db: Session = Depends(get_db),
 ):
-    result = availability_service.delete_availability(
-        db,
-        availability_id,
+    return delete_availability(
+        db=db,
+        availability_id=availability_id,
     )
-
-    if result is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Availability not found",
-        )
-
-    return {
-        "message": "Availability deleted successfully"
-    }
