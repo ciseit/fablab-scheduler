@@ -1,13 +1,13 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.database.connection import Base, engine
 
-from app.models import technician
 from app.models import availability
+from app.models import technician
 
-from app.routers import technicians
 from app.routers import availability
-
+from app.routers import technicians
 from app.routers.collection_campaigns import (
     router as collection_campaigns_router,
 )
@@ -18,6 +18,20 @@ app = FastAPI(
     title="FABLAB Scheduler API",
     description="Backend API for the FABLAB Scheduler.",
     version="0.1.0",
+)
+
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://redesigned-orbit-vpppqgv745p9h6666-3000.app.github.dev",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(technicians.router)
