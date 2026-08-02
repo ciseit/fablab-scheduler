@@ -23,7 +23,7 @@ export default function ActiveCampaigns() {
       <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-5">
         <div>
           <h2 className="text-lg font-semibold text-neutral-950">
-            Active campaigns
+            Active availability requests
           </h2>
           <p className="mt-1 text-sm text-neutral-500">
             Track submissions and share public availability links.

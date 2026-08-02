@@ -3,12 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  Users,
   CalendarDays,
-  Clock3,
   CalendarRange,
+  LayoutDashboard,
   Settings,
+  Users,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -24,14 +23,9 @@ const navigation = [
     icon: Users,
   },
   {
-    name: "Campaigns",
-    href: "/campaigns",
+    name: "Availability Requests",
+    href: "/availability-requests",
     icon: CalendarDays,
-  },
-  {
-    name: "Availability",
-    href: "/availability",
-    icon: Clock3,
   },
   {
     name: "Schedule Builder",
@@ -49,6 +43,7 @@ export default function Sidebar() {
         <h1 className="text-xl font-semibold tracking-tight">
           FABLAB
         </h1>
+
         <p className="mt-1 text-sm text-gray-500">
           Smart Scheduler
         </p>
@@ -57,6 +52,7 @@ export default function Sidebar() {
       <nav className="flex-1 space-y-2 p-4">
         {navigation.map((item) => {
           const Icon = item.icon;
+          const isActive = pathname === item.href;
 
           return (
             <Link
@@ -64,7 +60,7 @@ export default function Sidebar() {
               href={item.href}
               className={clsx(
                 "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all",
-                pathname === item.href
+                isActive
                   ? "bg-black text-white"
                   : "text-gray-600 hover:bg-gray-100"
               )}
@@ -79,7 +75,7 @@ export default function Sidebar() {
       <div className="border-t p-4">
         <Link
           href="/settings"
-          className="flex items-center gap-3 rounded-lg px-4 py-3 text-sm text-gray-600 hover:bg-gray-100"
+          className="flex items-center gap-3 rounded-lg px-4 py-3 text-sm text-gray-600 transition-all hover:bg-gray-100"
         >
           <Settings size={20} />
           Settings

@@ -1,4 +1,6 @@
-import { MoreHorizontal, Pencil } from "lucide-react";
+"use client";
+
+import { Pencil, Trash2 } from "lucide-react";
 
 export type Technician = {
   id: number;
@@ -14,27 +16,33 @@ export type Technician = {
 type TechnicianRowProps = {
   technician: Technician;
   onEdit: (technician: Technician) => void;
+  onDelete: (technician: Technician) => void;
+  deleting?: boolean;
 };
 
 export default function TechnicianRow({
   technician,
   onEdit,
+  onDelete,
+  deleting = false,
 }: TechnicianRowProps) {
   return (
     <tr className="border-b border-neutral-200 last:border-b-0">
       <td className="px-6 py-5">
-        <div>
-          <p className="font-medium text-neutral-950">{technician.name}</p>
-          <p className="mt-1 text-sm text-neutral-500">
-            {technician.designation}
-          </p>
-        </div>
+        <p className="font-medium text-neutral-950">
+          {technician.name}
+        </p>
+
+        <p className="mt-1 text-sm text-neutral-500">
+          {technician.designation}
+        </p>
       </td>
 
       <td className="px-6 py-5">
         <p className="font-medium text-neutral-900">
           {technician.assignmentName}
         </p>
+
         <p className="mt-1 text-sm text-neutral-500">
           {technician.assignmentType}
         </p>
@@ -65,7 +73,8 @@ export default function TechnicianRow({
           <button
             type="button"
             onClick={() => onEdit(technician)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 text-neutral-600 transition hover:bg-neutral-50"
+            disabled={deleting}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 text-neutral-600 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
             aria-label={`Edit ${technician.name}`}
           >
             <Pencil size={16} />
@@ -73,10 +82,12 @@ export default function TechnicianRow({
 
           <button
             type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 text-neutral-600 transition hover:bg-neutral-50"
-            aria-label={`More actions for ${technician.name}`}
+            onClick={() => onDelete(technician)}
+            disabled={deleting}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label={`Delete ${technician.name}`}
           >
-            <MoreHorizontal size={16} />
+            <Trash2 size={16} />
           </button>
         </div>
       </td>

@@ -5,11 +5,15 @@ import TechnicianRow, {
 type TechnicianTableProps = {
   technicians: Technician[];
   onEdit: (technician: Technician) => void;
+  onDelete: (technician: Technician) => void;
+  deletingTechnicianId?: number | null;
 };
 
 export default function TechnicianTable({
   technicians,
   onEdit,
+  onDelete,
+  deletingTechnicianId = null,
 }: TechnicianTableProps) {
   return (
     <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
@@ -42,6 +46,10 @@ export default function TechnicianTable({
                   key={technician.id}
                   technician={technician}
                   onEdit={onEdit}
+                  onDelete={onDelete}
+                  deleting={
+                    deletingTechnicianId === technician.id
+                  }
                 />
               ))
             ) : (
@@ -53,6 +61,7 @@ export default function TechnicianTable({
                   <p className="font-medium text-neutral-900">
                     No technicians found
                   </p>
+
                   <p className="mt-1 text-sm text-neutral-500">
                     Try a different search term or add a technician.
                   </p>

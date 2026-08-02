@@ -14,13 +14,13 @@ export default function DashboardHeader() {
 
         <p className="mt-4 max-w-2xl text-lg text-gray-600">
           You have 12 technicians available today.
-          One scheduling campaign is currently active.
+          One availability request is currently active.
         </p>
       </div>
 
       <button className="flex items-center gap-2 rounded-xl bg-black px-5 py-3 text-white transition hover:bg-neutral-800">
         <Plus size={18} />
-        Create Campaign
+        Create Availability Request
       </button>
     </div>
   );
