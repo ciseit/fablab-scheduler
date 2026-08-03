@@ -139,27 +139,35 @@ export default function AvailabilitySubmissionPage() {
     useState<AvailabilityRequest | null>(null);
 
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] =
+    useState(false);
 
   const [loadError, setLoadError] = useState("");
   const [submissionError, setSubmissionError] =
     useState("");
 
-  const [submitted, setSubmitted] = useState(false);
-  const [submittedBlockCount, setSubmittedBlockCount] =
-    useState(0);
+  const [submitted, setSubmitted] =
+    useState(false);
+
+  const [
+    submittedBlockCount,
+    setSubmittedBlockCount,
+  ] = useState(0);
 
   const [technicianName, setTechnicianName] =
     useState("");
 
-  const [technicianEmail, setTechnicianEmail] =
-    useState("");
+  const [
+    technicianEmail,
+    setTechnicianEmail,
+  ] = useState("");
 
   const [notes, setNotes] = useState("");
 
-  const [availability, setAvailability] = useState<
-    Record<DayName, DayAvailability>
-  >(initialAvailability);
+  const [availability, setAvailability] =
+    useState<
+      Record<DayName, DayAvailability>
+    >(initialAvailability);
 
   useEffect(() => {
     async function loadRequest() {
@@ -214,14 +222,19 @@ export default function AvailabilitySubmissionPage() {
     }
 
     if (
-      normalizeStatus(request.status) === "closed"
+      normalizeStatus(request.status) ===
+      "closed"
     ) {
       return true;
     }
 
-    const closingDate = new Date(request.closes_at);
+    const closingDate = new Date(
+      request.closes_at
+    );
 
-    if (Number.isNaN(closingDate.getTime())) {
+    if (
+      Number.isNaN(closingDate.getTime())
+    ) {
       return false;
     }
 
@@ -252,7 +265,9 @@ export default function AvailabilitySubmissionPage() {
       return "Please enter your email address.";
     }
 
-    if (!isValidEmail(technicianEmail.trim())) {
+    if (
+      !isValidEmail(technicianEmail.trim())
+    ) {
       return "Please enter a valid email address.";
     }
 
@@ -263,11 +278,16 @@ export default function AvailabilitySubmissionPage() {
     for (const day of selectedDays) {
       const entry = availability[day];
 
-      if (!entry.start_time || !entry.end_time) {
+      if (
+        !entry.start_time ||
+        !entry.end_time
+      ) {
         return `Please enter both a start and end time for ${day}.`;
       }
 
-      if (entry.end_time <= entry.start_time) {
+      if (
+        entry.end_time <= entry.start_time
+      ) {
         return `The end time for ${day} must be later than the start time.`;
       }
     }
@@ -285,7 +305,9 @@ export default function AvailabilitySubmissionPage() {
         start_time: normalizeTime(
           entry.start_time
         ),
-        end_time: normalizeTime(entry.end_time),
+        end_time: normalizeTime(
+          entry.end_time
+        ),
         availability_type:
           entry.availability_type,
       };
@@ -297,7 +319,10 @@ export default function AvailabilitySubmissionPage() {
   ) {
     event.preventDefault();
 
-    if (submitting || requestIsClosed) {
+    if (
+      submitting ||
+      requestIsClosed
+    ) {
       return;
     }
 
@@ -318,7 +343,9 @@ export default function AvailabilitySubmissionPage() {
     try {
       const savedAvailability =
         await submitPublicAvailability(token, {
-          email: technicianEmail.trim().toLowerCase(),
+          email: technicianEmail
+            .trim()
+            .toLowerCase(),
           availability_blocks:
             availabilityBlocks,
         });
@@ -339,27 +366,32 @@ export default function AvailabilitySubmissionPage() {
           ? error.message
           : "Unable to submit availability. Please try again.";
 
+      const normalizedMessage =
+        message.toLowerCase();
+
       if (
-        message
-          .toLowerCase()
-          .includes("technician not found")
+        normalizedMessage.includes(
+          "technician not found"
+        )
       ) {
         setSubmissionError(
-          "We could not find a technician account matching this email. Please use the same email registered by your FABLAB administrator."
+          "We could not find a technician matching this email. Please use the same email registered by your FABLAB administrator."
         );
       } else if (
-        message
-          .toLowerCase()
-          .includes("already been submitted") ||
-        message.toLowerCase().includes("duplicate")
+        normalizedMessage.includes(
+          "already been submitted"
+        ) ||
+        normalizedMessage.includes(
+          "duplicate"
+        )
       ) {
         setSubmissionError(
           "One or more of these availability blocks have already been submitted. Please contact your FABLAB administrator if you need to revise your availability."
         );
       } else if (
-        message
-          .toLowerCase()
-          .includes("availability request not found")
+        normalizedMessage.includes(
+          "availability request not found"
+        )
       ) {
         setSubmissionError(
           "This availability request is no longer available. Please ask your FABLAB administrator for a new link."
@@ -427,8 +459,9 @@ export default function AvailabilitySubmissionPage() {
           </h1>
 
           <p className="mt-3 text-neutral-600">
-            Thank you, {technicianName.trim()}.
-            Your availability has been recorded for{" "}
+            Thank you,{" "}
+            {technicianName.trim()}. Your
+            availability has been recorded for{" "}
             <span className="font-medium text-neutral-900">
               {request.name}
             </span>
@@ -445,8 +478,8 @@ export default function AvailabilitySubmissionPage() {
 
           {notes.trim() && (
             <p className="mt-4 text-xs text-neutral-400">
-              Note: scheduling notes are not stored by
-              the current backend yet.
+              Notes are not stored by the
+              current backend yet.
             </p>
           )}
         </div>
@@ -478,13 +511,18 @@ export default function AvailabilitySubmissionPage() {
 
             <span>
               Submit before{" "}
-              {formatDate(request.closes_at)}
+              {formatDate(
+                request.closes_at
+              )}
             </span>
           </div>
 
           <p className="mt-4 text-sm text-neutral-500">
             Minimum weekly commitment:{" "}
-            {request.minimum_weekly_hours} hours
+            {
+              request.minimum_weekly_hours
+            }{" "}
+            hours
           </p>
         </section>
 
@@ -497,8 +535,9 @@ export default function AvailabilitySubmissionPage() {
               />
 
               <p>
-                This availability request is closed and
-                is no longer accepting submissions.
+                This availability request is
+                closed and is no longer accepting
+                submissions.
               </p>
             </div>
           )}
@@ -537,10 +576,11 @@ export default function AvailabilitySubmissionPage() {
                 }}
                 placeholder="Your full name"
                 disabled={
-                  submitting || requestIsClosed
+                  submitting ||
+                  requestIsClosed
                 }
                 autoComplete="name"
-                className="h-12 w-full rounded-xl border border-neutral-300 px-4 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500"
+                className="h-12 w-full rounded-xl border border-neutral-300 bg-white px-4 text-neutral-950 placeholder:text-neutral-400 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500"
               />
             </div>
 
@@ -564,17 +604,19 @@ export default function AvailabilitySubmissionPage() {
                 }}
                 placeholder="you@example.com"
                 disabled={
-                  submitting || requestIsClosed
+                  submitting ||
+                  requestIsClosed
                 }
                 autoComplete="email"
-                className="h-12 w-full rounded-xl border border-neutral-300 px-4 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500"
+                className="h-12 w-full rounded-xl border border-neutral-300 bg-white px-4 text-neutral-950 placeholder:text-neutral-400 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500"
               />
             </div>
           </div>
 
           <div className="space-y-5">
             {days.map((day) => {
-              const entry = availability[day];
+              const entry =
+                availability[day];
 
               return (
                 <article
@@ -589,7 +631,9 @@ export default function AvailabilitySubmissionPage() {
                     <label className="flex items-center gap-2 text-sm font-medium text-neutral-700">
                       <input
                         type="checkbox"
-                        checked={entry.enabled}
+                        checked={
+                          entry.enabled
+                        }
                         disabled={
                           submitting ||
                           requestIsClosed
@@ -597,7 +641,8 @@ export default function AvailabilitySubmissionPage() {
                         onChange={(event) =>
                           updateDay(day, {
                             enabled:
-                              event.target.checked,
+                              event.target
+                                .checked,
                           })
                         }
                         className="h-4 w-4 rounded"
@@ -620,7 +665,9 @@ export default function AvailabilitySubmissionPage() {
                         <input
                           id={`${day}-start-time`}
                           type="time"
-                          value={entry.start_time}
+                          value={
+                            entry.start_time
+                          }
                           disabled={
                             submitting ||
                             requestIsClosed
@@ -628,10 +675,11 @@ export default function AvailabilitySubmissionPage() {
                           onChange={(event) =>
                             updateDay(day, {
                               start_time:
-                                event.target.value,
+                                event.target
+                                  .value,
                             })
                           }
-                          className="h-11 w-full rounded-xl border border-neutral-300 px-3 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100"
+                          className="h-11 w-full rounded-xl border border-neutral-300 bg-white px-3 text-neutral-950 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500"
                         />
                       </div>
 
@@ -646,7 +694,9 @@ export default function AvailabilitySubmissionPage() {
                         <input
                           id={`${day}-end-time`}
                           type="time"
-                          value={entry.end_time}
+                          value={
+                            entry.end_time
+                          }
                           disabled={
                             submitting ||
                             requestIsClosed
@@ -654,10 +704,11 @@ export default function AvailabilitySubmissionPage() {
                           onChange={(event) =>
                             updateDay(day, {
                               end_time:
-                                event.target.value,
+                                event.target
+                                  .value,
                             })
                           }
-                          className="h-11 w-full rounded-xl border border-neutral-300 px-3 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100"
+                          className="h-11 w-full rounded-xl border border-neutral-300 bg-white px-3 text-neutral-950 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500"
                         />
                       </div>
 
@@ -685,7 +736,7 @@ export default function AvailabilitySubmissionPage() {
                                   .value as AvailabilityType,
                             })
                           }
-                          className="h-11 w-full rounded-xl border border-neutral-300 bg-white px-3 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100"
+                          className="h-11 w-full rounded-xl border border-neutral-300 bg-white px-3 text-neutral-950 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500"
                         >
                           <option value="preferred">
                             Preferred
@@ -729,17 +780,18 @@ export default function AvailabilitySubmissionPage() {
                 setNotes(event.target.value)
               }
               disabled={
-                submitting || requestIsClosed
+                submitting ||
+                requestIsClosed
               }
               placeholder="Add any scheduling notes or restrictions."
               rows={4}
-              className="w-full rounded-xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100"
+              className="w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-neutral-950 placeholder:text-neutral-400 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500"
             />
 
             <p className="mt-2 text-xs text-neutral-400">
-              Notes are currently for your reference
-              during this session and are not yet stored
-              by the backend.
+              Notes are currently for your
+              reference during this session and
+              are not yet stored by the backend.
             </p>
           </div>
         </section>
@@ -748,7 +800,8 @@ export default function AvailabilitySubmissionPage() {
           <button
             type="submit"
             disabled={
-              submitting || requestIsClosed
+              submitting ||
+              requestIsClosed
             }
             className="flex min-w-48 items-center justify-center gap-2 rounded-xl bg-black px-6 py-3 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
           >

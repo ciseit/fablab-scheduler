@@ -37,8 +37,10 @@ export type AvailabilityRequestApiResponse = {
   minimum_weekly_hours: number;
   public_token: string;
   status: string;
+
   submitted_count?: number;
   total_technicians?: number;
+  total_availability_blocks?: number;
 };
 
 export type CreateAvailabilityRequestPayload = {
@@ -47,6 +49,13 @@ export type CreateAvailabilityRequestPayload = {
   opens_at: string;
   closes_at: string;
   minimum_weekly_hours: number;
+};
+
+export type SubmissionSummaryResponse = {
+  campaign_id: number;
+  unique_technicians_submitted: number;
+  total_technicians: number;
+  total_availability_blocks: number;
 };
 
 export function getAvailabilityRequests() {
@@ -74,5 +83,13 @@ export function getAvailabilityRequestByToken(
 
   return request<AvailabilityRequestApiResponse>(
     `/collection-campaigns/public/${encodedToken}`
+  );
+}
+
+export function getAvailabilitySubmissionSummary(
+  campaignId: number
+) {
+  return request<SubmissionSummaryResponse>(
+    `/collection-campaigns/${campaignId}/submission-summary`
   );
 }
