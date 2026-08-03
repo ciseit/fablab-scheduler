@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.auth_dependencies import get_current_admin
 from app.database.connection import get_db
 from app.schemas.collection_campaign import (
     CollectionCampaignCreate,
@@ -20,6 +21,7 @@ router = APIRouter(
 @router.get(
     "/",
     response_model=list[CollectionCampaignListResponse],
+    dependencies=[Depends(get_current_admin)],
 )
 def get_collection_campaigns(
     db: Session = Depends(get_db),
@@ -32,6 +34,7 @@ def get_collection_campaigns(
 @router.get(
     "/{campaign_id}/submission-summary",
     response_model=CollectionCampaignSubmissionSummary,
+    dependencies=[Depends(get_current_admin)],
 )
 def get_collection_campaign_submission_summary(
     campaign_id: int,
@@ -75,6 +78,7 @@ def get_public_collection_campaign(
     "/",
     response_model=CollectionCampaignResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_admin)],
 )
 def create_collection_campaign(
     campaign_data: CollectionCampaignCreate,

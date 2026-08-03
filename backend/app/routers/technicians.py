@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.core.auth_dependencies import get_current_admin
 from app.database.connection import get_db
 from app.schemas.technician import (
     TechnicianCreate,
@@ -13,6 +14,7 @@ from app.services import technician_service
 router = APIRouter(
     prefix="/technicians",
     tags=["Technicians"],
+    dependencies=[Depends(get_current_admin)],
 )
 
 
@@ -83,5 +85,3 @@ def delete_technician(
         db,
         technician_id,
     )
-
-    return None
