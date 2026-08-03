@@ -3,10 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database.connection import Base, engine
 
+from app.models import admin
 from app.models import availability
 from app.models import collection_campaign
 from app.models import technician
 
+from app.routers import auth
 from app.routers import availability as availability_router
 from app.routers import technicians
 from app.routers.collection_campaigns import (
@@ -40,6 +42,7 @@ app.add_middleware(
 )
 
 
+app.include_router(auth.router)
 app.include_router(technicians.router)
 app.include_router(availability_router.router)
 app.include_router(collection_campaigns_router)
