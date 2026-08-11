@@ -1,5 +1,6 @@
+import secrets
 from collections import defaultdict
-from datetime import time
+from datetime import datetime, time, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -203,7 +204,7 @@ def generate_schedule(
     db: Session,
     campaign_id: int,
 ) -> dict:
-    _get_campaign_or_404(db, campaign_id)
+    campaign = _get_campaign_or_404(db, campaign_id)
 
     shifts = (
         db.query(Shift)
@@ -304,6 +305,8 @@ def generate_schedule(
     return {
         "campaign_id": campaign_id,
         "assignments": new_assignments,
+        "published": campaign.schedule_published_at is not None,
+        "public_token": campaign.schedule_public_token,
         **summary,
     }
 
@@ -312,7 +315,7 @@ def get_schedule(
     db: Session,
     campaign_id: int,
 ) -> dict:
-    _get_campaign_or_404(db, campaign_id)
+    campaign = _get_campaign_or_404(db, campaign_id)
 
     assignments = (
         db.query(Assignment)
@@ -369,6 +372,8 @@ def get_schedule(
     return {
         "campaign_id": campaign_id,
         "assignments": assignments,
+        "published": campaign.schedule_published_at is not None,
+        "public_token": campaign.schedule_public_token,
         **summary,
     }
 
@@ -486,3 +491,149 @@ def edit_assignment(
     db.refresh(assignment)
 
     return assignment
+
+
+def _generate_unique_schedule_token(db: Session) -> str:
+    while True:
+        token = secrets.token_urlsafe(12)
+
+        existing = (
+            db.query(CollectionCampaign)
+            .filter(CollectionCampaign.schedule_public_token == token)
+            .first()
+        )
+
+        if existing is None:
+            return token
+
+
+def publish_schedule(
+    db: Session,
+    campaign_id: int,
+) -> dict:
+    campaign = _get_campaign_or_404(db, campaign_id)
+
+    has_assignments = (
+        db.query(Assignment)
+        .filter(Assignment.campaign_id == campaign_id)
+        .first()
+        is not None
+    )
+
+    if not has_assignments:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Generate a schedule with at least one assignment "
+                "before publishing"
+            ),
+        )
+
+    if campaign.schedule_public_token is None:
+        campaign.schedule_public_token = (
+            _generate_unique_schedule_token(db)
+        )
+
+    campaign.schedule_published_at = datetime.now(timezone.utc)
+
+    db.commit()
+
+    return get_schedule(db, campaign_id)
+
+
+def get_public_schedule(
+    db: Session,
+    public_token: str,
+) -> dict:
+    campaign = (
+        db.query(CollectionCampaign)
+        .filter(
+            CollectionCampaign.schedule_public_token == public_token
+        )
+        .first()
+    )
+
+    if campaign is None or campaign.schedule_published_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Published schedule not found",
+        )
+
+    assignments = (
+        db.query(Assignment)
+        .filter(Assignment.campaign_id == campaign.id)
+        .all()
+    )
+
+    shifts_by_id = {
+        shift.id: shift
+        for shift in db.query(Shift)
+        .filter(Shift.campaign_id == campaign.id)
+        .all()
+    }
+
+    technician_ids = {
+        assignment.technician_id for assignment in assignments
+    }
+
+    technicians_by_id = (
+        {
+            technician.id: technician
+            for technician in db.query(Technician)
+            .filter(Technician.id.in_(technician_ids))
+            .all()
+        }
+        if technician_ids
+        else {}
+    )
+
+    public_assignments = []
+    hours_by_technician: dict[int, float] = defaultdict(float)
+
+    for assignment in assignments:
+        shift = shifts_by_id.get(assignment.shift_id)
+        technician = technicians_by_id.get(assignment.technician_id)
+
+        if shift is None or technician is None:
+            continue
+
+        public_assignments.append(
+            {
+                "shift_id": shift.id,
+                "day_of_week": shift.day_of_week,
+                "start_time": shift.start_time,
+                "end_time": shift.end_time,
+                "technician_name": technician.name,
+            }
+        )
+
+        hours_by_technician[technician.id] += _duration_hours(
+            shift.start_time, shift.end_time
+        )
+
+    public_assignments.sort(
+        key=lambda row: (
+            DAY_ORDER.get(row["day_of_week"], 7),
+            row["start_time"],
+            row["shift_id"],
+        )
+    )
+
+    technician_hours = sorted(
+        (
+            {
+                "technician_name": technicians_by_id[technician_id].name,
+                "assigned_hours": round(hours, 2),
+            }
+            for technician_id, hours in hours_by_technician.items()
+        ),
+        key=lambda row: row["technician_name"].lower(),
+    )
+
+    return {
+        "campaign_name": campaign.name,
+        "semester": campaign.semester,
+        "published_at": campaign.schedule_published_at,
+        "assignments": public_assignments,
+        "technician_hours": technician_hours,
+    }

@@ -4,8 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CalendarX2,
+  CheckCircle2,
+  Copy,
+  ExternalLink,
   Plus,
   RefreshCw,
+  Send,
   Sparkles,
   Users,
 } from "lucide-react";
@@ -30,6 +34,7 @@ import {
   editAssignment,
   generateSchedule,
   getSchedule,
+  publishSchedule,
   type ScheduleApiResponse,
 } from "@/lib/scheduleApi";
 
@@ -90,6 +95,10 @@ function shiftHours(start: string, end: string) {
   return (endMinutes - startMinutes) / 60;
 }
 
+function buildPublicScheduleUrl(publicToken: string) {
+  return `${window.location.origin}/schedule/${publicToken}`;
+}
+
 export default function ScheduleBuilderPage() {
   const [campaigns, setCampaigns] = useState<
     AvailabilityRequestApiResponse[]
@@ -107,6 +116,8 @@ export default function ScheduleBuilderPage() {
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -230,6 +241,52 @@ export default function ScheduleBuilderPage() {
       );
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function handlePublish() {
+    if (selectedCampaignId === null) {
+      return;
+    }
+
+    setPublishing(true);
+    setError("");
+
+    try {
+      const result = await publishSchedule(selectedCampaignId);
+      setSchedule(result);
+      showSuccess("Schedule published.");
+    } catch (publishError) {
+      console.error("Failed to publish schedule:", publishError);
+
+      setError(
+        publishError instanceof Error
+          ? publishError.message
+          : "Unable to publish the schedule."
+      );
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  async function handleCopyLink() {
+    if (!schedule?.public_token) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        buildPublicScheduleUrl(schedule.public_token)
+      );
+
+      setLinkCopied(true);
+
+      window.setTimeout(() => {
+        setLinkCopied(false);
+      }, 2000);
+    } catch (copyError) {
+      console.error("Failed to copy share link:", copyError);
+      setError("Unable to copy the share link.");
     }
   }
 
@@ -435,9 +492,23 @@ export default function ScheduleBuilderPage() {
       <div className="space-y-8">
         <section className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-sm font-medium text-neutral-500">
-              Schedule Builder
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm font-medium text-neutral-500">
+                Schedule Builder
+              </p>
+
+              {schedule && (
+                <span
+                  className={
+                    schedule.published
+                      ? "rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+                      : "rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600"
+                  }
+                >
+                  {schedule.published ? "Published" : "Not Published"}
+                </span>
+              )}
+            </div>
 
             <h1 className="mt-3 text-4xl font-semibold tracking-tight text-neutral-950">
               {selectedCampaign
@@ -507,6 +578,25 @@ export default function ScheduleBuilderPage() {
               <Sparkles size={17} />
               {generating ? "Generating..." : "Generate Schedule"}
             </button>
+
+            <button
+              type="button"
+              onClick={handlePublish}
+              disabled={
+                selectedCampaignId === null ||
+                publishing ||
+                !hasAssignments
+              }
+              title={
+                !hasAssignments
+                  ? "Generate a schedule before publishing."
+                  : undefined
+              }
+              className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-5 py-3 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Send size={17} />
+              {publishing ? "Publishing..." : "Publish Schedule"}
+            </button>
           </div>
         </section>
 
@@ -520,6 +610,51 @@ export default function ScheduleBuilderPage() {
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {error}
           </div>
+        )}
+
+        {schedule?.published && schedule.public_token && (
+          <section className="rounded-2xl border border-neutral-200 bg-white p-6">
+            <h2 className="text-lg font-semibold text-neutral-950">
+              Shareable Schedule Link
+            </h2>
+
+            <p className="mt-1 text-sm text-neutral-500">
+              Anyone with this link can view the published schedule.
+              No administrator login is required.
+            </p>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <div className="flex-1 truncate rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700">
+                {buildPublicScheduleUrl(schedule.public_token)}
+              </div>
+
+              <a
+                href={buildPublicScheduleUrl(schedule.public_token)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 rounded-xl border border-neutral-200 px-4 py-3 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50"
+              >
+                <ExternalLink size={16} />
+                View
+              </a>
+
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                className="flex items-center justify-center gap-2 rounded-xl border border-neutral-200 px-4 py-3 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50"
+              >
+                {linkCopied ? (
+                  <CheckCircle2
+                    size={16}
+                    className="text-emerald-600"
+                  />
+                ) : (
+                  <Copy size={16} />
+                )}
+                {linkCopied ? "Copied" : "Copy Link"}
+              </button>
+            </div>
+          </section>
         )}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

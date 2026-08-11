@@ -99,6 +99,29 @@ export type ScheduleApiResponse = {
   assignments: AssignmentApiResponse[];
   technicians_below_minimum: TechnicianHoursSummaryApiResponse[];
   uncovered_shifts: UncoveredShiftApiResponse[];
+  published: boolean;
+  public_token: string | null;
+};
+
+export type PublicAssignmentApiResponse = {
+  shift_id: number;
+  day_of_week: ShiftDay;
+  start_time: string;
+  end_time: string;
+  technician_name: string;
+};
+
+export type PublicTechnicianHoursApiResponse = {
+  technician_name: string;
+  assigned_hours: number;
+};
+
+export type PublicScheduleApiResponse = {
+  campaign_name: string;
+  semester: string;
+  published_at: string;
+  assignments: PublicAssignmentApiResponse[];
+  technician_hours: PublicTechnicianHoursApiResponse[];
 };
 
 export function generateSchedule(campaignId: number) {
@@ -128,5 +151,21 @@ export function editAssignment(
       body: JSON.stringify({ technician_id: technicianId }),
     },
     "Unable to reassign this shift. Please try again."
+  );
+}
+
+export function publishSchedule(campaignId: number) {
+  return request<ScheduleApiResponse>(
+    `/schedules/publish/${campaignId}`,
+    { method: "POST" },
+    "Unable to publish the schedule. Please try again."
+  );
+}
+
+export function getPublicSchedule(publicToken: string) {
+  return request<PublicScheduleApiResponse>(
+    `/schedules/public/${encodeURIComponent(publicToken)}`,
+    {},
+    "Unable to load this published schedule."
   );
 }

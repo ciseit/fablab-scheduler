@@ -6,6 +6,7 @@ from app.database.connection import get_db
 from app.schemas.assignment import (
     AssignmentResponse,
     AssignmentUpdate,
+    PublicScheduleResponse,
     ScheduleResponse,
 )
 from app.services import scheduling_service
@@ -14,7 +15,6 @@ from app.services import scheduling_service
 router = APIRouter(
     prefix="/schedules",
     tags=["Schedules"],
-    dependencies=[Depends(get_current_admin)],
 )
 
 
@@ -22,6 +22,7 @@ router = APIRouter(
     "/generate/{campaign_id}",
     response_model=ScheduleResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_admin)],
 )
 def generate_schedule_endpoint(
     campaign_id: int,
@@ -33,9 +34,39 @@ def generate_schedule_endpoint(
     )
 
 
+@router.post(
+    "/publish/{campaign_id}",
+    response_model=ScheduleResponse,
+    dependencies=[Depends(get_current_admin)],
+)
+def publish_schedule_endpoint(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+):
+    return scheduling_service.publish_schedule(
+        db=db,
+        campaign_id=campaign_id,
+    )
+
+
+@router.get(
+    "/public/{public_token}",
+    response_model=PublicScheduleResponse,
+)
+def get_public_schedule_endpoint(
+    public_token: str,
+    db: Session = Depends(get_db),
+):
+    return scheduling_service.get_public_schedule(
+        db=db,
+        public_token=public_token,
+    )
+
+
 @router.get(
     "/{campaign_id}",
     response_model=ScheduleResponse,
+    dependencies=[Depends(get_current_admin)],
 )
 def get_schedule_endpoint(
     campaign_id: int,
@@ -50,6 +81,7 @@ def get_schedule_endpoint(
 @router.patch(
     "/assignments/{assignment_id}",
     response_model=AssignmentResponse,
+    dependencies=[Depends(get_current_admin)],
 )
 def edit_assignment_endpoint(
     assignment_id: int,

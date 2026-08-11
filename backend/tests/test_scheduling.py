@@ -411,6 +411,96 @@ class SchedulingTestCase(unittest.TestCase):
         response = self.client.post("/schedules/generate/9999")
         self.assertEqual(response.status_code, 404)
 
+    def test_publish_requires_assignments(self):
+        campaign = self.create_campaign()
+
+        response = self.client.post(
+            f"/schedules/publish/{campaign['id']}"
+        )
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_publish_requires_admin(self):
+        campaign = self.create_campaign()
+
+        app.dependency_overrides.pop(get_current_admin, None)
+
+        response = self.client.post(
+            f"/schedules/publish/{campaign['id']}"
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+        app.dependency_overrides[get_current_admin] = (
+            _override_get_current_admin
+        )
+
+    def test_publish_is_stable_and_public_endpoint_works(self):
+        campaign = self.create_campaign()
+        campaign_id = campaign["id"]
+
+        tech = self.create_technician(
+            "Pat Published", "pat.published@example.com"
+        )
+        self.submit_availability(
+            tech["id"], campaign_id, "monday", "08:00", "12:00", "available"
+        )
+        self.create_shift(campaign_id, "monday", "08:00", "12:00")
+
+        self.client.post(f"/schedules/generate/{campaign_id}")
+
+        first_publish = self.client.post(
+            f"/schedules/publish/{campaign_id}"
+        )
+        self.assertEqual(first_publish.status_code, 200, first_publish.text)
+
+        first_body = first_publish.json()
+        self.assertTrue(first_body["published"])
+        self.assertIsNotNone(first_body["public_token"])
+        token = first_body["public_token"]
+
+        # Publishing again must keep the same token (stable link).
+        second_publish = self.client.post(
+            f"/schedules/publish/{campaign_id}"
+        )
+        self.assertEqual(second_publish.status_code, 200)
+        self.assertEqual(second_publish.json()["public_token"], token)
+
+        # The public endpoint must work with no admin session at all.
+        app.dependency_overrides.pop(get_current_admin, None)
+
+        public_response = self.client.get(f"/schedules/public/{token}")
+        self.assertEqual(
+            public_response.status_code, 200, public_response.text
+        )
+
+        public_body = public_response.json()
+        self.assertEqual(public_body["campaign_name"], campaign["name"])
+        self.assertEqual(len(public_body["assignments"]), 1)
+        self.assertEqual(
+            public_body["assignments"][0]["technician_name"],
+            "Pat Published",
+        )
+        self.assertEqual(public_body["assignments"][0]["day_of_week"], "monday")
+        self.assertEqual(len(public_body["technician_hours"]), 1)
+        self.assertAlmostEqual(
+            public_body["technician_hours"][0]["assigned_hours"], 4.0
+        )
+
+        # A still-admin-gated endpoint must reject the same unauthenticated
+        # client to prove the public endpoint's openness is intentional,
+        # not a blanket auth bypass.
+        admin_response = self.client.get(f"/schedules/{campaign_id}")
+        self.assertEqual(admin_response.status_code, 401)
+
+        app.dependency_overrides[get_current_admin] = (
+            _override_get_current_admin
+        )
+
+    def test_public_schedule_unknown_token_returns_404(self):
+        response = self.client.get("/schedules/public/not-a-real-token")
+        self.assertEqual(response.status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()
