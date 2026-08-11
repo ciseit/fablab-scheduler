@@ -49,7 +49,10 @@ class AvailabilityCreate(AvailabilityBase):
 
 
 class AvailabilityUpdate(BaseModel):
-    campaign_id: int | None = Field(default=None, gt=0)
+    campaign_id: int | None = Field(
+        default=None,
+        gt=0,
+    )
     day_of_week: DayOfWeek | None = None
     start_time: time | None = None
     end_time: time | None = None

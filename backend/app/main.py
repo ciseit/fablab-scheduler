@@ -1,15 +1,19 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.database.connection import Base, engine
+
 from app.models import availability
 from app.models import collection_campaign
 from app.models import technician
+
 from app.routers import availability as availability_router
-from app.routers import collection_campaigns
 from app.routers import technicians
+from app.routers.collection_campaigns import (
+    router as collection_campaigns_router,
+)
 
 
-# Create database tables for all imported SQLAlchemy models.
 Base.metadata.create_all(bind=engine)
 
 
@@ -20,22 +24,36 @@ app = FastAPI(
 )
 
 
-# Register API routers.
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://redesigned-orbit-vpppqgv745p9h6666-3000.app.github.dev",
+]
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 app.include_router(technicians.router)
 app.include_router(availability_router.router)
-app.include_router(collection_campaigns.router)
+app.include_router(collection_campaigns_router)
 
 
 @app.get("/")
-def home() -> dict[str, str]:
+def home():
     return {
-        "message": "Welcome to FABLAB Scheduler API",
+        "message": "FABLAB Scheduler API is running"
     }
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
+def health():
     return {
-        "status": "OK",
-        "message": "Backend is running successfully",
+        "status": "healthy"
     }
