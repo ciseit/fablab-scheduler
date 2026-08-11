@@ -190,6 +190,11 @@ export default function ScheduleBuilderPage() {
       setTechnicians(technicianData as ApiTechnician[]);
       setShifts(shiftData);
       setSchedule(scheduleData);
+
+      // A freshly loaded schedule may reuse assignment ids from a
+      // previous snapshot (e.g. after a regenerate), so any row errors
+      // keyed by those ids no longer refer to the same logical row.
+      setRowErrors({});
     } catch (loadError) {
       console.error("Failed to load schedule data:", loadError);
 
@@ -230,6 +235,12 @@ export default function ScheduleBuilderPage() {
     try {
       const result = await generateSchedule(selectedCampaignId);
       setSchedule(result);
+
+      // Regenerating replaces every assignment row, and the new rows
+      // may reuse ids from the previous schedule, so old row errors
+      // must not carry over.
+      setRowErrors({});
+
       showSuccess("Schedule generated.");
     } catch (generateError) {
       console.error("Failed to generate schedule:", generateError);
