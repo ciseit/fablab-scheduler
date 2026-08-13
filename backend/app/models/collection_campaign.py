@@ -46,3 +46,15 @@ class CollectionCampaign(Base):
         nullable=False,
         default="draft",
     )
+
+    schedule_published_at = Column(
+        DateTime,
+        nullable=True,
+    )
+
+    schedule_public_token = Column(
+        String(100),
+        unique=True,
+        nullable=True,
+        index=True,
+    )

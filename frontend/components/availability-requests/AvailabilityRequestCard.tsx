@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   CalendarDays,
   CheckCircle2,
@@ -247,14 +248,12 @@ export default function AvailabilityRequestCard({
             {copied ? "Link copied" : "Copy Link"}
           </button>
 
-          <button
-            type="button"
-            disabled
-            title="Schedule generation requires the backend generation API."
-            className="cursor-not-allowed rounded-xl bg-neutral-300 px-4 py-2.5 text-sm font-medium text-neutral-600"
+          <Link
+            href={`/schedule-builder?campaignId=${request.id}`}
+            className="flex items-center justify-center rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800"
           >
             Generate Schedule
-          </button>
+          </Link>
         </div>
       </div>
     </article>
