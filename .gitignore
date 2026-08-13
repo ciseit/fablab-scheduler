@@ -10,6 +10,7 @@ backend/venv/
 # Environment files
 .env
 .env.*
+!.env.example
 
 # Local SQLite databases
 *.db

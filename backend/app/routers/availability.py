@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.core.auth_dependencies import get_current_admin
 from app.database.connection import get_db
 from app.schemas.availability import (
     AvailabilityCreate,
@@ -27,6 +28,7 @@ router = APIRouter(
     "/technicians/{technician_id}",
     response_model=AvailabilityResponse,
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(get_current_admin)],
 )
 def create_availability_endpoint(
     technician_id: int,
@@ -60,6 +62,7 @@ def create_public_availability_submission_endpoint(
 @router.get(
     "/technicians/{technician_id}",
     response_model=list[AvailabilityResponse],
+    dependencies=[Depends(get_current_admin)],
 )
 def get_availabilities_for_technician_endpoint(
     technician_id: int,
@@ -74,6 +77,7 @@ def get_availabilities_for_technician_endpoint(
 @router.patch(
     "/{availability_id}",
     response_model=AvailabilityResponse,
+    dependencies=[Depends(get_current_admin)],
 )
 def update_availability_endpoint(
     availability_id: int,
@@ -90,6 +94,7 @@ def update_availability_endpoint(
 @router.delete(
     "/{availability_id}",
     response_model=AvailabilityResponse,
+    dependencies=[Depends(get_current_admin)],
 )
 def delete_availability_endpoint(
     availability_id: int,
