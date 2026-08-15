@@ -35,7 +35,7 @@ function getErrorMessage(
   return fallbackMessage;
 }
 
-async function request(path: string, options: RequestInit = {}) {
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
@@ -62,32 +62,34 @@ async function request(path: string, options: RequestInit = {}) {
   }
 
   if (response.status === 204) {
-    return null;
+    return null as T;
   }
 
-  return response.json();
+  return response.json() as Promise<T>;
 }
 
-export function getTechnicians() {
-  return request("/technicians/");
+export type AdminApiResponse = {
+  id: number;
+  full_name: string;
+  email: string;
+  role: string;
+  created_at: string;
+};
+
+export function getCurrentAdmin() {
+  return request<AdminApiResponse>("/auth/me");
 }
 
-export function createTechnician(data: unknown) {
-  return request("/technicians/", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-}
+export type UpdateAdminPayload = {
+  full_name?: string;
+  email?: string;
+};
 
-export function updateTechnician(id: number, data: unknown) {
-  return request(`/technicians/${id}`, {
+export function updateCurrentAdmin(
+  data: UpdateAdminPayload
+) {
+  return request<AdminApiResponse>("/auth/me", {
     method: "PATCH",
     body: JSON.stringify(data),
-  });
-}
-
-export function deleteTechnician(id: number) {
-  return request(`/technicians/${id}`, {
-    method: "DELETE",
   });
 }

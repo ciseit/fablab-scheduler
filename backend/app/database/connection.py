@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 # We will replace this later with Supabase PostgreSQL
@@ -28,3 +28,26 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+# There is no migration framework (e.g. Alembic) in this project yet.
+# Base.metadata.create_all only creates missing tables, so columns added to
+# a model after a table already exists on disk need to be added here to
+# keep existing SQLite databases (like local/demo data) in sync.
+def run_startup_migrations() -> None:
+    inspector = inspect(engine)
+
+    if not inspector.has_table("technicians"):
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("technicians")
+    }
+
+    if "assignment_type" not in existing_columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE technicians ADD COLUMN assignment_type VARCHAR(100)"
+                )
+            )

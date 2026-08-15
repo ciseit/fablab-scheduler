@@ -25,6 +25,7 @@ type ApiTechnician = {
   designation: string;
   status: string;
   weekly_target_hours: number;
+  assignment_type?: string | null;
   notes?: string | null;
 };
 
@@ -41,7 +42,8 @@ function mapApiTechnician(
         ? "Active"
         : "Inactive",
     weeklyTargetHours: apiTechnician.weekly_target_hours,
-    assignmentType: "Not assigned",
+    assignmentType:
+      apiTechnician.assignment_type || "Not assigned",
     assignmentName:
       apiTechnician.notes || "No current assignment",
   };
@@ -56,6 +58,7 @@ function mapTechnicianForApi(
     designation: data.designation,
     status: data.status.toLowerCase(),
     weekly_target_hours: data.weeklyTargetHours,
+    assignment_type: data.assignmentType || null,
     notes: data.assignmentName || null,
   };
 }

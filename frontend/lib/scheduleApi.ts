@@ -101,6 +101,7 @@ export type ScheduleApiResponse = {
   uncovered_shifts: UncoveredShiftApiResponse[];
   published: boolean;
   public_token: string | null;
+  minimum_weekly_hours: number;
 };
 
 export type PublicAssignmentApiResponse = {

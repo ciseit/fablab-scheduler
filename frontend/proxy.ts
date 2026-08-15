@@ -7,6 +7,7 @@ const protectedRoutes = [
   "/technicians",
   "/availability-requests",
   "/schedule-builder",
+  "/settings",
 ];
 
 export function proxy(request: NextRequest) {
@@ -45,5 +46,6 @@ export const config = {
     "/technicians/:path*",
     "/availability-requests/:path*",
     "/schedule-builder/:path*",
+    "/settings/:path*",
   ],
 };

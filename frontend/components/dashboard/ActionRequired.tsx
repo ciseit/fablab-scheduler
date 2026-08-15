@@ -1,19 +1,56 @@
-import { AlertTriangle, ArrowRight } from "lucide-react";
+"use client";
 
-const issues = [
-  {
-    title: "Four technicians have not submitted availability",
-    description: "Fall 2026 Technician Availability closes on August 7.",
-    action: "View missing submissions",
-  },
-  {
-    title: "Lunch coverage is still unassigned",
-    description: "Tuesday from 1:00 PM to 2:00 PM needs coverage.",
-    action: "Resolve coverage",
-  },
-];
+import { AlertTriangle, ArrowRight, CheckCircle2 } from "lucide-react";
 
-export default function ActionRequired() {
+export type ActionRequiredItem = {
+  id: string;
+  title: string;
+  description: string;
+  action: string;
+  href: string;
+};
+
+type ActionRequiredProps = {
+  items: ActionRequiredItem[];
+  loading?: boolean;
+};
+
+export default function ActionRequired({
+  items,
+  loading = false,
+}: ActionRequiredProps) {
+  if (loading) {
+    return (
+      <section className="rounded-2xl border border-neutral-200 bg-white p-6">
+        <h2 className="text-lg font-semibold text-neutral-950">
+          Action required
+        </h2>
+        <p className="mt-2 text-sm text-neutral-500">Loading...</p>
+      </section>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+            <CheckCircle2 size={19} />
+          </div>
+
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-950">
+              All caught up
+            </h2>
+            <p className="mt-1 text-sm text-neutral-600">
+              No outstanding items need your attention right now.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="rounded-2xl border border-amber-200 bg-amber-50/60">
       <div className="flex items-start gap-3 border-b border-amber-200 px-6 py-5">
@@ -27,15 +64,16 @@ export default function ActionRequired() {
           </h2>
 
           <p className="mt-1 text-sm text-neutral-600">
-            Two items need your attention before publishing the schedule.
+            {items.length} {items.length === 1 ? "item needs" : "items need"}{" "}
+            your attention.
           </p>
         </div>
       </div>
 
       <div className="divide-y divide-amber-200">
-        {issues.map((issue) => (
+        {items.map((issue) => (
           <article
-            key={issue.title}
+            key={issue.id}
             className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between"
           >
             <div>
@@ -48,13 +86,13 @@ export default function ActionRequired() {
               </p>
             </div>
 
-            <button
-              type="button"
+            <a
+              href={issue.href}
               className="flex items-center gap-2 text-sm font-medium text-neutral-900 transition hover:text-neutral-600"
             >
               {issue.action}
               <ArrowRight size={16} />
-            </button>
+            </a>
           </article>
         ))}
       </div>

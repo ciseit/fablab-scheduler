@@ -13,9 +13,6 @@ from app.models.technician import Technician
 from app.schemas.assignment import AssignmentUpdate
 
 
-MIN_WEEKLY_HOURS = 15.0
-TARGET_WEEKLY_HOURS = 20.0
-
 DAY_ORDER = {
     "monday": 0,
     "tuesday": 1,
@@ -156,20 +153,21 @@ def _build_summary(
     technicians: list[Technician],
     hours_assigned: dict[int, float],
     uncovered: list[dict],
+    minimum_weekly_hours: float,
 ) -> dict:
     technicians_below_minimum = []
 
     for technician in technicians:
         hours = hours_assigned.get(technician.id, 0.0)
 
-        if hours < MIN_WEEKLY_HOURS:
+        if hours < minimum_weekly_hours:
             technicians_below_minimum.append(
                 {
                     "technician_id": technician.id,
                     "technician_name": technician.name,
                     "assigned_hours": round(hours, 2),
                     "shortfall_hours": round(
-                        MIN_WEEKLY_HOURS - hours, 2
+                        minimum_weekly_hours - hours, 2
                     ),
                 }
             )
@@ -300,13 +298,19 @@ def generate_schedule(
     for assignment in new_assignments:
         db.refresh(assignment)
 
-    summary = _build_summary(technicians, hours_assigned, uncovered)
+    summary = _build_summary(
+        technicians,
+        hours_assigned,
+        uncovered,
+        campaign.minimum_weekly_hours,
+    )
 
     return {
         "campaign_id": campaign_id,
         "assignments": new_assignments,
         "published": campaign.schedule_published_at is not None,
         "public_token": campaign.schedule_public_token,
+        "minimum_weekly_hours": campaign.minimum_weekly_hours,
         **summary,
     }
 
@@ -367,13 +371,19 @@ def get_schedule(
                 }
             )
 
-    summary = _build_summary(technicians, hours_assigned, uncovered)
+    summary = _build_summary(
+        technicians,
+        hours_assigned,
+        uncovered,
+        campaign.minimum_weekly_hours,
+    )
 
     return {
         "campaign_id": campaign_id,
         "assignments": assignments,
         "published": campaign.schedule_published_at is not None,
         "public_token": campaign.schedule_public_token,
+        "minimum_weekly_hours": campaign.minimum_weekly_hours,
         **summary,
     }
 
