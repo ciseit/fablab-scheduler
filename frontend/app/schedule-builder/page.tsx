@@ -224,139 +224,6 @@ export default function ScheduleBuilderPage() {
     }, 2500);
   }
 
-  async function handleGenerate() {
-    if (selectedCampaignId === null) {
-      return;
-    }
-
-    setGenerating(true);
-    setError("");
-
-    try {
-      const result = await generateSchedule(selectedCampaignId);
-      setSchedule(result);
-
-      // Regenerating replaces every assignment row, and the new rows
-      // may reuse ids from the previous schedule, so old row errors
-      // must not carry over.
-      setRowErrors({});
-
-      showSuccess("Schedule generated.");
-    } catch (generateError) {
-      console.error("Failed to generate schedule:", generateError);
-
-      setError(
-        generateError instanceof Error
-          ? generateError.message
-          : "Unable to generate the schedule."
-      );
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  async function handlePublish() {
-    if (selectedCampaignId === null) {
-      return;
-    }
-
-    setPublishing(true);
-    setError("");
-
-    try {
-      const result = await publishSchedule(selectedCampaignId);
-      setSchedule(result);
-      showSuccess("Schedule published.");
-    } catch (publishError) {
-      console.error("Failed to publish schedule:", publishError);
-
-      setError(
-        publishError instanceof Error
-          ? publishError.message
-          : "Unable to publish the schedule."
-      );
-    } finally {
-      setPublishing(false);
-    }
-  }
-
-  async function handleCopyLink() {
-    if (!schedule?.public_token) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(
-        buildPublicScheduleUrl(schedule.public_token)
-      );
-
-      setLinkCopied(true);
-
-      window.setTimeout(() => {
-        setLinkCopied(false);
-      }, 2000);
-    } catch (copyError) {
-      console.error("Failed to copy share link:", copyError);
-      setError("Unable to copy the share link.");
-    }
-  }
-
-  async function handleCreateShift(data: ShiftFormData) {
-    if (selectedCampaignId === null) {
-      return;
-    }
-
-    try {
-      await createShift({
-        campaign_id: selectedCampaignId,
-        ...data,
-      });
-
-      setShiftDialogOpen(false);
-      showSuccess("Shift created.");
-
-      await loadScheduleData(selectedCampaignId);
-    } catch (createError) {
-      console.error("Failed to create shift:", createError);
-      throw createError;
-    }
-  }
-
-  async function handleReassign(
-    assignmentId: number,
-    technicianId: number
-  ) {
-    setReassigningId(assignmentId);
-
-    setRowErrors((current) => {
-      const next = { ...current };
-      delete next[assignmentId];
-      return next;
-    });
-
-    try {
-      await editAssignment(assignmentId, technicianId);
-
-      if (selectedCampaignId !== null) {
-        await loadScheduleData(selectedCampaignId);
-      }
-
-      showSuccess("Assignment updated.");
-    } catch (reassignError) {
-      console.error("Failed to reassign shift:", reassignError);
-
-      setRowErrors((current) => ({
-        ...current,
-        [assignmentId]:
-          reassignError instanceof Error
-            ? reassignError.message
-            : "Unable to reassign this shift.",
-      }));
-    } finally {
-      setReassigningId(null);
-    }
-  }
-
   const technicianById = useMemo(() => {
     const map = new Map<number, ApiTechnician>();
     technicians.forEach((technician) => {
@@ -493,10 +360,183 @@ export default function ScheduleBuilderPage() {
     [campaigns, selectedCampaignId]
   );
 
+  async function handleGenerate() {
+    if (selectedCampaignId === null) {
+      return;
+    }
+
+    if (assignmentRows.length > 0) {
+      const confirmed = window.confirm(
+        "This schedule already has assignments, including any manual " +
+          "reassignments you've made. Generating a new schedule will " +
+          "replace all of them. Continue?"
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setGenerating(true);
+    setError("");
+
+    try {
+      const result = await generateSchedule(selectedCampaignId);
+      setSchedule(result);
+
+      // Regenerating replaces every assignment row, and the new rows
+      // may reuse ids from the previous schedule, so old row errors
+      // must not carry over.
+      setRowErrors({});
+
+      showSuccess("Schedule generated.");
+    } catch (generateError) {
+      console.error("Failed to generate schedule:", generateError);
+
+      setError(
+        generateError instanceof Error
+          ? generateError.message
+          : "Unable to generate the schedule."
+      );
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handlePublish() {
+    if (selectedCampaignId === null) {
+      return;
+    }
+
+    setPublishing(true);
+    setError("");
+
+    try {
+      const result = await publishSchedule(selectedCampaignId);
+      setSchedule(result);
+      showSuccess("Schedule published.");
+    } catch (publishError) {
+      console.error("Failed to publish schedule:", publishError);
+
+      setError(
+        publishError instanceof Error
+          ? publishError.message
+          : "Unable to publish the schedule."
+      );
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  async function handleCopyLink() {
+    if (!schedule?.public_token) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        buildPublicScheduleUrl(schedule.public_token)
+      );
+
+      setLinkCopied(true);
+
+      window.setTimeout(() => {
+        setLinkCopied(false);
+      }, 2000);
+    } catch (copyError) {
+      console.error("Failed to copy share link:", copyError);
+      setError("Unable to copy the share link.");
+    }
+  }
+
+  async function handleCreateShift(data: ShiftFormData) {
+    if (selectedCampaignId === null) {
+      return;
+    }
+
+    try {
+      await createShift({
+        campaign_id: selectedCampaignId,
+        ...data,
+      });
+
+      setShiftDialogOpen(false);
+      showSuccess("Shift created.");
+
+      await loadScheduleData(selectedCampaignId);
+    } catch (createError) {
+      console.error("Failed to create shift:", createError);
+      throw createError;
+    }
+  }
+
+  async function handleReassign(
+    assignmentId: number,
+    technicianId: number
+  ) {
+    // Captured before the request so the error message (and the
+    // rollback it describes) refers to the technicians involved in
+    // *this* attempt, not whatever the row happens to render after
+    // state settles.
+    const previousAssignment = schedule?.assignments.find(
+      (candidate) => candidate.id === assignmentId
+    );
+    const previousTechnicianName = previousAssignment
+      ? technicianById.get(previousAssignment.technician_id)?.name
+      : undefined;
+    const attemptedTechnicianName =
+      technicianById.get(technicianId)?.name ?? "The selected technician";
+
+    // The dropdown itself already rolls back to the previous technician
+    // on failure (we never optimistically update `schedule`), but the
+    // raw backend message ("This technician has no submitted
+    // availability...") reads as if it's about whichever technician the
+    // row currently shows. Name both technicians explicitly so the
+    // error can't be misread as applying to the (still valid) previous
+    // assignment.
+    const rollbackNote = previousTechnicianName
+      ? ` ${previousTechnicianName} remains assigned to this shift.`
+      : "";
+
+    setReassigningId(assignmentId);
+
+    setRowErrors((current) => {
+      const next = { ...current };
+      delete next[assignmentId];
+      return next;
+    });
+
+    try {
+      await editAssignment(assignmentId, technicianId);
+
+      if (selectedCampaignId !== null) {
+        await loadScheduleData(selectedCampaignId);
+      }
+
+      showSuccess("Assignment updated.");
+    } catch (reassignError) {
+      console.error("Failed to reassign shift:", reassignError);
+
+      const baseMessage =
+        reassignError instanceof Error
+          ? reassignError.message
+          : "Unable to reassign this shift.";
+
+      setRowErrors((current) => ({
+        ...current,
+        [assignmentId]: `${attemptedTechnicianName}: ${baseMessage}${rollbackNote}`,
+      }));
+    } finally {
+      setReassigningId(null);
+    }
+  }
+
   const hasShifts = shifts.length > 0;
   const hasAssignments = assignmentRows.length > 0;
   const uncoveredShifts = schedule?.uncovered_shifts ?? [];
   const belowMinimum = schedule?.technicians_below_minimum ?? [];
+  const minimumWeeklyHours =
+    schedule?.minimum_weekly_hours ?? 15;
 
   return (
     <AppLayout>
@@ -691,7 +731,9 @@ export default function ScheduleBuilderPage() {
           </article>
 
           <article className="rounded-2xl border border-neutral-200 bg-white p-5">
-            <p className="text-sm text-neutral-500">Below 15 hrs</p>
+            <p className="text-sm text-neutral-500">
+              Below {minimumWeeklyHours} hrs
+            </p>
             <p className="mt-3 text-3xl font-semibold text-neutral-950">
               {belowMinimum.length}
             </p>
@@ -836,12 +878,13 @@ export default function ScheduleBuilderPage() {
 
               <div className="flex-1">
                 <h2 className="text-lg font-semibold text-neutral-950">
-                  Technicians below 15 hours
+                  Technicians below {minimumWeeklyHours} hours
                 </h2>
 
                 <p className="mt-1 text-sm text-neutral-600">
-                  These technicians could not reach the 15-hour weekly
-                  minimum with the current availability and shifts.
+                  These technicians could not reach the{" "}
+                  {minimumWeeklyHours}-hour weekly minimum with the
+                  current availability and shifts.
                 </p>
 
                 <ul className="mt-4 space-y-2">
@@ -1049,7 +1092,7 @@ export default function ScheduleBuilderPage() {
                       <td className="px-6 py-5">
                         {belowMinimumIds.has(technician.id) ? (
                           <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                            Below 15 hrs
+                            Below {minimumWeeklyHours} hrs
                           </span>
                         ) : (
                           <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">

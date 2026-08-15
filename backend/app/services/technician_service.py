@@ -1,6 +1,8 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.models.assignment import Assignment
+from app.models.availability import Availability
 from app.models.technician import Technician
 from app.schemas.technician import TechnicianCreate, TechnicianUpdate
 
@@ -92,6 +94,31 @@ def delete_technician(
     technician_id: int,
 ):
     technician = get_technician_by_id(db, technician_id)
+
+    has_assignments = (
+        db.query(Assignment)
+        .filter(Assignment.technician_id == technician_id)
+        .first()
+        is not None
+    )
+
+    has_availability = (
+        db.query(Availability)
+        .filter(Availability.technician_id == technician_id)
+        .first()
+        is not None
+    )
+
+    if has_assignments or has_availability:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This technician has submitted availability or schedule "
+                "assignments and cannot be deleted. Set their status to "
+                "Inactive instead to remove them from future scheduling "
+                "while preserving history."
+            ),
+        )
 
     db.delete(technician)
     db.commit()

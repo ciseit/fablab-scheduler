@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy import Column, DateTime, Float, Integer, String
 
 from app.database.connection import Base
 
@@ -29,9 +29,9 @@ class CollectionCampaign(Base):
     )
 
     minimum_weekly_hours = Column(
-        Integer,
+        Float,
         nullable=False,
-        default=15,
+        default=15.0,
     )
 
     public_token = Column(

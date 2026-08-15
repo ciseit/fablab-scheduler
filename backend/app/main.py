@@ -1,7 +1,12 @@
+import os
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database.connection import Base, engine
+from app.database.connection import Base, engine, run_startup_migrations
+
+load_dotenv()
 
 from app.models import admin
 from app.models import assignment
@@ -21,6 +26,7 @@ from app.routers.collection_campaigns import (
 
 
 Base.metadata.create_all(bind=engine)
+run_startup_migrations()
 
 
 app = FastAPI(
@@ -30,11 +36,18 @@ app = FastAPI(
 )
 
 
-allowed_origins = [
+default_allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://redesigned-orbit-vpppqgv745p9h6666-3000.app.github.dev",
 ]
+
+extra_allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
+allowed_origins = default_allowed_origins + extra_allowed_origins
 
 
 app.add_middleware(

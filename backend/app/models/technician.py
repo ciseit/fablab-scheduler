@@ -18,4 +18,6 @@ class Technician(Base):
 
     weekly_target_hours = Column(Float, default=15.0)
 
+    assignment_type = Column(String(100), nullable=True)
+
     notes = Column(String, nullable=True)

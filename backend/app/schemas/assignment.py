@@ -43,6 +43,7 @@ class ScheduleResponse(BaseModel):
     uncovered_shifts: list[UncoveredShift]
     published: bool
     public_token: str | None
+    minimum_weekly_hours: float
 
 
 class PublicAssignment(BaseModel):

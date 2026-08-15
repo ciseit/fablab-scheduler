@@ -86,7 +86,7 @@ class SchedulingTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 201, response.text)
         return response.json()
 
-    def create_campaign(self):
+    def create_campaign(self, minimum_weekly_hours=15):
         response = self.client.post(
             "/collection-campaigns/",
             json={
@@ -94,7 +94,7 @@ class SchedulingTestCase(unittest.TestCase):
                 "semester": "Fall 2026",
                 "opens_at": "2026-08-01T00:00:00",
                 "closes_at": "2026-08-31T00:00:00",
-                "minimum_weekly_hours": 15,
+                "minimum_weekly_hours": minimum_weekly_hours,
             },
         )
         self.assertEqual(response.status_code, 201, response.text)
@@ -328,6 +328,14 @@ class SchedulingTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 422)
 
+        # A rejected reassignment must not mutate the assignment: the
+        # previously (validly) assigned technician stays in place.
+        schedule = self.client.get(f"/schedules/{campaign_id}").json()
+        persisted = next(
+            a for a in schedule["assignments"] if a["id"] == assignment_id
+        )
+        self.assertEqual(persisted["technician_id"], tech_a["id"])
+
     def test_edit_assignment_rejects_overlap(self):
         campaign = self.create_campaign()
         campaign_id = campaign["id"]
@@ -500,6 +508,65 @@ class SchedulingTestCase(unittest.TestCase):
     def test_public_schedule_unknown_token_returns_404(self):
         response = self.client.get("/schedules/public/not-a-real-token")
         self.assertEqual(response.status_code, 404)
+
+    def test_generate_schedule_uses_campaign_minimum_weekly_hours(self):
+        # A campaign can configure a minimum other than the old hardcoded
+        # 15h floor; the schedule's below-minimum reporting must reflect
+        # whatever was actually configured for this campaign.
+        low_min_campaign = self.create_campaign(minimum_weekly_hours=10)
+        low_min_id = low_min_campaign["id"]
+
+        tech = self.create_technician(
+            "Low Minimum Tech", "lowmin@example.com"
+        )
+        self.submit_availability(
+            tech["id"], low_min_id, "monday", "08:00", "20:00", "available"
+        )
+        # 12 hours: below the old hardcoded 15h floor, but at/above this
+        # campaign's configured 10h floor.
+        self.create_shift(low_min_id, "monday", "08:00", "20:00")
+
+        low_min_body = self.client.post(
+            f"/schedules/generate/{low_min_id}"
+        ).json()
+
+        self.assertEqual(low_min_body["minimum_weekly_hours"], 10)
+
+        low_min_below = {
+            item["technician_id"]
+            for item in low_min_body["technicians_below_minimum"]
+        }
+        self.assertNotIn(tech["id"], low_min_below)
+
+        # A higher configured minimum must flag a technician who would
+        # have cleared the old hardcoded 15h floor.
+        high_min_campaign = self.create_campaign(minimum_weekly_hours=20)
+        high_min_id = high_min_campaign["id"]
+
+        tech_2 = self.create_technician(
+            "High Minimum Tech", "highmin@example.com"
+        )
+        self.submit_availability(
+            tech_2["id"], high_min_id, "monday", "08:00", "16:00", "available"
+        )
+        # 8 hours: at/above the old hardcoded 15h floor is false anyway,
+        # but well below this campaign's configured 20h floor.
+        self.create_shift(high_min_id, "monday", "08:00", "16:00")
+
+        high_min_body = self.client.post(
+            f"/schedules/generate/{high_min_id}"
+        ).json()
+
+        self.assertEqual(high_min_body["minimum_weekly_hours"], 20)
+
+        high_min_below = {
+            item["technician_id"]: item
+            for item in high_min_body["technicians_below_minimum"]
+        }
+        self.assertIn(tech_2["id"], high_min_below)
+        self.assertAlmostEqual(
+            high_min_below[tech_2["id"]]["shortfall_hours"], 12.0
+        )
 
 
 if __name__ == "__main__":
