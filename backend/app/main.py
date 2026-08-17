@@ -12,11 +12,16 @@ from app.models import admin
 from app.models import assignment
 from app.models import availability
 from app.models import collection_campaign
+from app.models import location
+from app.models import schedule
+from app.models import schedule_category
 from app.models import shift
 from app.models import technician
 
 from app.routers import auth
 from app.routers import availability as availability_router
+from app.routers import locations as locations_router
+from app.routers import schedule_categories as schedule_categories_router
 from app.routers import schedules as schedules_router
 from app.routers import shifts as shifts_router
 from app.routers import technicians
@@ -65,6 +70,8 @@ app.include_router(availability_router.router)
 app.include_router(collection_campaigns_router)
 app.include_router(shifts_router.router)
 app.include_router(schedules_router.router)
+app.include_router(locations_router.router)
+app.include_router(schedule_categories_router.router)
 
 
 @app.get("/")

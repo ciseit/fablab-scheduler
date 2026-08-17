@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.auth_dependencies import get_current_admin
-from app.database.connection import Base, get_db
+from app.database.connection import Base, get_db, run_startup_migrations
 from app.main import app
 
 # Import every model module so their tables register on Base.metadata.
@@ -22,6 +22,9 @@ from app.models import admin  # noqa: F401
 from app.models import assignment  # noqa: F401
 from app.models import availability  # noqa: F401
 from app.models import collection_campaign  # noqa: F401
+from app.models import location  # noqa: F401
+from app.models import schedule  # noqa: F401
+from app.models import schedule_category  # noqa: F401
 from app.models import shift  # noqa: F401
 from app.models import technician  # noqa: F401
 
@@ -45,6 +48,7 @@ class TechnicianDeletionTestCase(unittest.TestCase):
         )
 
         Base.metadata.create_all(bind=self.engine)
+        run_startup_migrations(db_engine=self.engine)
 
         TestingSessionLocal = sessionmaker(
             autocommit=False,
@@ -122,9 +126,21 @@ class TechnicianDeletionTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()
 
+    def create_schedule(self, campaign_id, minimum_weekly_hours=15):
+        response = self.client.post(
+            "/schedules/",
+            json={
+                "name": "Fall Schedule",
+                "minimum_weekly_hours": minimum_weekly_hours,
+                "campaign_id": campaign_id,
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        return response.json()
+
     def create_shift(
         self,
-        campaign_id,
+        schedule_id,
         day_of_week,
         start_time,
         end_time,
@@ -133,7 +149,7 @@ class TechnicianDeletionTestCase(unittest.TestCase):
         response = self.client.post(
             "/shifts/",
             json={
-                "campaign_id": campaign_id,
+                "schedule_id": schedule_id,
                 "day_of_week": day_of_week,
                 "start_time": start_time,
                 "end_time": end_time,
@@ -174,6 +190,8 @@ class TechnicianDeletionTestCase(unittest.TestCase):
     def test_delete_technician_with_assignment_is_blocked(self):
         campaign = self.create_campaign()
         campaign_id = campaign["id"]
+        sched = self.create_schedule(campaign_id)
+        schedule_id = sched["id"]
 
         tech = self.create_technician(
             "Has Assignment", "hasassignment@example.com"
@@ -181,10 +199,10 @@ class TechnicianDeletionTestCase(unittest.TestCase):
         self.submit_availability(
             tech["id"], campaign_id, "monday", "08:00", "12:00", "available"
         )
-        self.create_shift(campaign_id, "monday", "08:00", "12:00")
+        self.create_shift(schedule_id, "monday", "08:00", "12:00")
 
         generated = self.client.post(
-            f"/schedules/generate/{campaign_id}"
+            f"/schedules/generate/{schedule_id}"
         )
         self.assertEqual(len(generated.json()["assignments"]), 1)
 
@@ -193,7 +211,7 @@ class TechnicianDeletionTestCase(unittest.TestCase):
 
         # No orphaned assignment: the schedule must still resolve the
         # technician cleanly rather than silently dropping the row.
-        schedule_response = self.client.get(f"/schedules/{campaign_id}")
+        schedule_response = self.client.get(f"/schedules/{schedule_id}")
         self.assertEqual(len(schedule_response.json()["assignments"]), 1)
 
     def test_technician_assignment_type_round_trips(self):

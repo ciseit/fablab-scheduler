@@ -4,10 +4,9 @@ from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.assignment import Assignment
 from app.models.availability import Availability
 from app.models.collection_campaign import CollectionCampaign
-from app.models.shift import Shift
+from app.models.schedule import Schedule
 from app.models.technician import Technician
 from app.schemas.collection_campaign import CollectionCampaignCreate
 
@@ -268,19 +267,13 @@ def delete_collection_campaign(
         .scalar()
     ) or 0
 
-    shift_count = (
-        db.query(func.count(Shift.id))
-        .filter(Shift.campaign_id == campaign_id)
+    linked_schedule_count = (
+        db.query(func.count(Schedule.id))
+        .filter(Schedule.campaign_id == campaign_id)
         .scalar()
     ) or 0
 
-    assignment_count = (
-        db.query(func.count(Assignment.id))
-        .filter(Assignment.campaign_id == campaign_id)
-        .scalar()
-    ) or 0
-
-    if submission_count > 0 or shift_count > 0 or assignment_count > 0:
+    if submission_count > 0 or linked_schedule_count > 0:
         blockers = []
 
         if submission_count > 0:
@@ -289,15 +282,10 @@ def delete_collection_campaign(
                 f"{'submission' if submission_count == 1 else 'submissions'}"
             )
 
-        if shift_count > 0:
+        if linked_schedule_count > 0:
             blockers.append(
-                f"{shift_count} {'shift' if shift_count == 1 else 'shifts'}"
-            )
-
-        if assignment_count > 0:
-            blockers.append(
-                f"{assignment_count} schedule "
-                f"{'assignment' if assignment_count == 1 else 'assignments'}"
+                f"{linked_schedule_count} linked "
+                f"{'schedule' if linked_schedule_count == 1 else 'schedules'}"
             )
 
         raise HTTPException(
@@ -306,8 +294,9 @@ def delete_collection_campaign(
                 "This availability request can't be deleted because it "
                 "already has " + ", ".join(blockers) + ". Deleting it "
                 "would permanently erase that data. Remove the related "
-                "submissions, shifts, and schedule assignments first if "
-                "you really need to delete this request."
+                "submissions first, and unlink or delete any schedules "
+                "built from this request, if you really need to delete "
+                "it."
             ),
         )
 

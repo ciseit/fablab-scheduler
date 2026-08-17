@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.auth_dependencies import get_current_admin
-from app.database.connection import Base, get_db
+from app.database.connection import Base, get_db, run_startup_migrations
 from app.main import app
 
 # Import every model module so their tables register on Base.metadata.
@@ -22,6 +22,9 @@ from app.models import admin  # noqa: F401
 from app.models import assignment  # noqa: F401
 from app.models import availability  # noqa: F401
 from app.models import collection_campaign  # noqa: F401
+from app.models import location  # noqa: F401
+from app.models import schedule  # noqa: F401
+from app.models import schedule_category  # noqa: F401
 from app.models import shift  # noqa: F401
 from app.models import technician  # noqa: F401
 
@@ -45,6 +48,7 @@ class CollectionCampaignTestCase(unittest.TestCase):
         )
 
         Base.metadata.create_all(bind=self.engine)
+        run_startup_migrations(db_engine=self.engine)
 
         TestingSessionLocal = sessionmaker(
             autocommit=False,
@@ -100,21 +104,13 @@ class CollectionCampaignTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 201, response.text)
         return response.json()
 
-    def create_shift(
-        self,
-        campaign_id,
-        day_of_week="monday",
-        start_time="09:00:00",
-        end_time="12:00:00",
-    ):
+    def create_schedule(self, campaign_id):
         response = self.client.post(
-            "/shifts/",
+            "/schedules/",
             json={
+                "name": "Fall Schedule",
+                "minimum_weekly_hours": 15,
                 "campaign_id": campaign_id,
-                "day_of_week": day_of_week,
-                "start_time": start_time,
-                "end_time": end_time,
-                "required_technicians": 1,
             },
         )
         self.assertEqual(response.status_code, 201, response.text)
@@ -195,17 +191,16 @@ class CollectionCampaignTestCase(unittest.TestCase):
             get_response.json()["unique_technicians_submitted"], 1
         )
 
-    def test_delete_blocked_with_shifts_and_assignments(self):
+    def test_delete_blocked_with_linked_schedule(self):
         campaign = self.create_campaign()
-        self.create_technician("Ava", "ava@example.com")
-        self.create_shift(campaign["id"])
+        self.create_schedule(campaign["id"])
 
         delete_response = self.client.delete(
             f"/collection-campaigns/{campaign['id']}"
         )
         self.assertEqual(delete_response.status_code, 409)
         self.assertIn(
-            "shift", delete_response.json()["detail"].lower()
+            "schedule", delete_response.json()["detail"].lower()
         )
 
     # -- duplicate submission tests ------------------------------------

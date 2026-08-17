@@ -12,10 +12,20 @@ class Shift(Base):
         index=True,
     )
 
-    campaign_id = Column(
+    schedule_id = Column(
         Integer,
-        ForeignKey("collection_campaigns.id"),
+        ForeignKey("schedules.id"),
         nullable=False,
+        index=True,
+    )
+
+    # The site this shift takes place at (e.g. FABLAB, a school site, an
+    # outreach event). Optional so existing shifts without a location keep
+    # working.
+    location_id = Column(
+        Integer,
+        ForeignKey("locations.id"),
+        nullable=True,
         index=True,
     )
 

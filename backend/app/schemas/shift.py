@@ -6,7 +6,8 @@ from app.schemas.availability import DayOfWeek
 
 
 class ShiftBase(BaseModel):
-    campaign_id: int = Field(gt=0)
+    schedule_id: int = Field(gt=0)
+    location_id: int | None = Field(default=None, gt=0)
     day_of_week: DayOfWeek
     start_time: time
     end_time: time

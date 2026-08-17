@@ -1,7 +1,8 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.collection_campaign import CollectionCampaign
+from app.models.location import Location
+from app.models.schedule import Schedule
 from app.models.shift import Shift
 from app.schemas.shift import ShiftCreate
 
@@ -10,22 +11,34 @@ def create_shift(
     db: Session,
     shift_data: ShiftCreate,
 ) -> Shift:
-    campaign = (
-        db.query(CollectionCampaign)
-        .filter(
-            CollectionCampaign.id == shift_data.campaign_id
-        )
+    schedule = (
+        db.query(Schedule)
+        .filter(Schedule.id == shift_data.schedule_id)
         .first()
     )
 
-    if campaign is None:
+    if schedule is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Availability Request not found",
+            detail="Schedule not found",
         )
 
+    if shift_data.location_id is not None:
+        location = (
+            db.query(Location)
+            .filter(Location.id == shift_data.location_id)
+            .first()
+        )
+
+        if location is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Location not found",
+            )
+
     shift = Shift(
-        campaign_id=shift_data.campaign_id,
+        schedule_id=shift_data.schedule_id,
+        location_id=shift_data.location_id,
         day_of_week=shift_data.day_of_week.value,
         start_time=shift_data.start_time,
         end_time=shift_data.end_time,
@@ -39,13 +52,13 @@ def create_shift(
     return shift
 
 
-def get_shifts_for_campaign(
+def get_shifts_for_schedule(
     db: Session,
-    campaign_id: int,
+    schedule_id: int,
 ) -> list[Shift]:
     return (
         db.query(Shift)
-        .filter(Shift.campaign_id == campaign_id)
+        .filter(Shift.schedule_id == schedule_id)
         .order_by(Shift.id)
         .all()
     )

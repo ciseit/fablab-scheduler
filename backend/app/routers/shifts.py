@@ -31,10 +31,10 @@ def create_shift(
     response_model=list[ShiftResponse],
 )
 def get_shifts(
-    campaign_id: int = Query(gt=0),
+    schedule_id: int = Query(gt=0),
     db: Session = Depends(get_db),
 ):
-    return shift_service.get_shifts_for_campaign(db, campaign_id)
+    return shift_service.get_shifts_for_schedule(db, schedule_id)
 
 
 @router.get(

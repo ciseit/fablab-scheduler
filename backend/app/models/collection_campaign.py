@@ -47,14 +47,8 @@ class CollectionCampaign(Base):
         default="draft",
     )
 
-    schedule_published_at = Column(
-        DateTime,
-        nullable=True,
-    )
-
-    schedule_public_token = Column(
-        String(100),
-        unique=True,
-        nullable=True,
-        index=True,
-    )
+    # Publishing state now lives on Schedule (a campaign can have zero,
+    # one, or more schedules built from it). The old schedule_published_at
+    # / schedule_public_token columns may still physically exist on
+    # existing databases from before this model was introduced; they are
+    # simply unmapped and unused now.

@@ -7,10 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.models.assignment import Assignment
 from app.models.availability import Availability
-from app.models.collection_campaign import CollectionCampaign
+from app.models.location import Location
+from app.models.schedule import Schedule
+from app.models.schedule_category import ScheduleCategory
 from app.models.shift import Shift
 from app.models.technician import Technician
-from app.schemas.assignment import AssignmentUpdate
+from app.schemas.assignment import AssignmentCreate, AssignmentUpdate
 
 
 DAY_ORDER = {
@@ -30,6 +32,8 @@ PREFERENCE_RANK = {
     "available": 1,
     "backup": 2,
 }
+
+DEFAULT_WORKING_CATEGORY_NAME = "Working"
 
 
 def _duration_hours(start: time, end: time) -> float:
@@ -68,23 +72,26 @@ def _has_overlap(
     return False
 
 
-def _get_campaign_or_404(
-    db: Session,
-    campaign_id: int,
-) -> CollectionCampaign:
-    campaign = (
-        db.query(CollectionCampaign)
-        .filter(CollectionCampaign.id == campaign_id)
-        .first()
+def _get_schedule_or_404(db: Session, schedule_id: int) -> Schedule:
+    schedule = (
+        db.query(Schedule).filter(Schedule.id == schedule_id).first()
     )
 
-    if campaign is None:
+    if schedule is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Availability Request not found",
+            detail="Schedule not found",
         )
 
-    return campaign
+    return schedule
+
+
+def _get_default_working_category(db: Session) -> ScheduleCategory | None:
+    return (
+        db.query(ScheduleCategory)
+        .filter(ScheduleCategory.name == DEFAULT_WORKING_CATEGORY_NAME)
+        .first()
+    )
 
 
 def _pick_best_technician(
@@ -200,15 +207,24 @@ def _build_summary(
 
 def generate_schedule(
     db: Session,
-    campaign_id: int,
+    schedule_id: int,
 ) -> dict:
-    campaign = _get_campaign_or_404(db, campaign_id)
+    schedule = _get_schedule_or_404(db, schedule_id)
 
     shifts = (
         db.query(Shift)
-        .filter(Shift.campaign_id == campaign_id)
+        .filter(Shift.schedule_id == schedule_id)
         .all()
     )
+
+    if not shifts:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Add at least one shift to this schedule before "
+                "generating it."
+            ),
+        )
 
     shifts.sort(
         key=lambda shift: (
@@ -225,27 +241,30 @@ def generate_schedule(
         .all()
     )
 
-    availabilities = (
-        db.query(Availability)
-        .filter(
-            Availability.campaign_id == campaign_id,
-            Availability.availability_type != "restricted",
-        )
-        .all()
-    )
-
     availability_by_technician: dict[int, list[Availability]] = defaultdict(list)
 
-    for availability in availabilities:
-        availability_by_technician[availability.technician_id].append(
-            availability
+    if schedule.campaign_id is not None:
+        availabilities = (
+            db.query(Availability)
+            .filter(
+                Availability.campaign_id == schedule.campaign_id,
+                Availability.availability_type != "restricted",
+            )
+            .all()
         )
+
+        for availability in availabilities:
+            availability_by_technician[availability.technician_id].append(
+                availability
+            )
 
     # Regenerating a schedule replaces any previously generated draft.
     db.query(Assignment).filter(
-        Assignment.campaign_id == campaign_id
+        Assignment.schedule_id == schedule_id
     ).delete(synchronize_session=False)
     db.commit()
+
+    working_category = _get_default_working_category(db)
 
     hours_assigned = {technician.id: 0.0 for technician in technicians}
     technician_schedule: dict[int, list[tuple[str, time, time]]] = defaultdict(list)
@@ -270,10 +289,13 @@ def generate_schedule(
                 break
 
             assignment = Assignment(
-                campaign_id=campaign_id,
+                schedule_id=schedule_id,
                 shift_id=shift.id,
                 technician_id=candidate.id,
                 status="scheduled",
+                category_id=(
+                    working_category.id if working_category else None
+                ),
             )
 
             db.add(assignment)
@@ -302,35 +324,35 @@ def generate_schedule(
         technicians,
         hours_assigned,
         uncovered,
-        campaign.minimum_weekly_hours,
+        schedule.minimum_weekly_hours,
     )
 
     return {
-        "campaign_id": campaign_id,
+        "schedule_id": schedule_id,
         "assignments": new_assignments,
-        "published": campaign.schedule_published_at is not None,
-        "public_token": campaign.schedule_public_token,
-        "minimum_weekly_hours": campaign.minimum_weekly_hours,
+        "published": schedule.published_at is not None,
+        "public_token": schedule.public_token,
+        "minimum_weekly_hours": schedule.minimum_weekly_hours,
         **summary,
     }
 
 
-def get_schedule(
+def get_schedule_board(
     db: Session,
-    campaign_id: int,
+    schedule_id: int,
 ) -> dict:
-    campaign = _get_campaign_or_404(db, campaign_id)
+    schedule = _get_schedule_or_404(db, schedule_id)
 
     assignments = (
         db.query(Assignment)
-        .filter(Assignment.campaign_id == campaign_id)
+        .filter(Assignment.schedule_id == schedule_id)
         .order_by(Assignment.id)
         .all()
     )
 
     shifts = (
         db.query(Shift)
-        .filter(Shift.campaign_id == campaign_id)
+        .filter(Shift.schedule_id == schedule_id)
         .all()
     )
 
@@ -375,97 +397,69 @@ def get_schedule(
         technicians,
         hours_assigned,
         uncovered,
-        campaign.minimum_weekly_hours,
+        schedule.minimum_weekly_hours,
     )
 
     return {
-        "campaign_id": campaign_id,
+        "schedule_id": schedule_id,
         "assignments": assignments,
-        "published": campaign.schedule_published_at is not None,
-        "public_token": campaign.schedule_public_token,
-        "minimum_weekly_hours": campaign.minimum_weekly_hours,
+        "published": schedule.published_at is not None,
+        "public_token": schedule.public_token,
+        "minimum_weekly_hours": schedule.minimum_weekly_hours,
         **summary,
     }
 
 
-def edit_assignment(
+def _validate_technician_for_shift(
     db: Session,
-    assignment_id: int,
-    update: AssignmentUpdate,
-) -> Assignment:
-    assignment = (
-        db.query(Assignment)
-        .filter(Assignment.id == assignment_id)
-        .first()
-    )
-
-    if assignment is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Assignment not found",
-        )
-
-    new_technician = (
-        db.query(Technician)
-        .filter(Technician.id == update.technician_id)
-        .first()
-    )
-
-    if new_technician is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Technician not found",
-        )
-
-    if new_technician.status != "active":
+    schedule: Schedule,
+    shift: Shift,
+    technician: Technician,
+    excluding_assignment_id: int | None,
+) -> None:
+    if technician.status != "active":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Technician is not active",
         )
 
-    shift = (
-        db.query(Shift)
-        .filter(Shift.id == assignment.shift_id)
-        .first()
+    # Availability coverage is only meaningful (and only checkable) when
+    # this schedule is linked to an Availability Request. A fully manual
+    # schedule has no availability data to validate against.
+    if schedule.campaign_id is not None:
+        covering_block = (
+            db.query(Availability)
+            .filter(
+                Availability.technician_id == technician.id,
+                Availability.campaign_id == schedule.campaign_id,
+                Availability.day_of_week == shift.day_of_week,
+                Availability.availability_type != "restricted",
+                Availability.start_time <= shift.start_time,
+                Availability.end_time >= shift.end_time,
+            )
+            .first()
+        )
+
+        if covering_block is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "This technician has no submitted availability "
+                    "covering this shift"
+                ),
+            )
+
+    other_assignments_query = db.query(Assignment).filter(
+        Assignment.schedule_id == schedule.id,
+        Assignment.technician_id == technician.id,
     )
 
-    if shift is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Shift not found",
+    if excluding_assignment_id is not None:
+        other_assignments_query = other_assignments_query.filter(
+            Assignment.id != excluding_assignment_id
         )
 
-    covering_block = (
-        db.query(Availability)
-        .filter(
-            Availability.technician_id == new_technician.id,
-            Availability.campaign_id == assignment.campaign_id,
-            Availability.day_of_week == shift.day_of_week,
-            Availability.availability_type != "restricted",
-            Availability.start_time <= shift.start_time,
-            Availability.end_time >= shift.end_time,
-        )
-        .first()
-    )
-
-    if covering_block is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                "This technician has no submitted availability "
-                "covering this shift"
-            ),
-        )
-
-    other_assignments = (
-        db.query(Assignment)
-        .filter(
-            Assignment.campaign_id == assignment.campaign_id,
-            Assignment.technician_id == new_technician.id,
-            Assignment.id != assignment.id,
-        )
-        .all()
-    )
+    other_assignments = other_assignments_query.all()
 
     if other_assignments:
         other_shift_ids = [
@@ -495,7 +489,169 @@ def edit_assignment(
                     ),
                 )
 
-    assignment.technician_id = new_technician.id
+
+def _get_active_category_or_404(
+    db: Session, category_id: int
+) -> ScheduleCategory:
+    category = (
+        db.query(ScheduleCategory)
+        .filter(ScheduleCategory.id == category_id)
+        .first()
+    )
+
+    if category is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found",
+        )
+
+    if not category.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f'The "{category.name}" category has been archived and '
+                "can't be assigned to new shifts."
+            ),
+        )
+
+    return category
+
+
+def create_assignment(
+    db: Session,
+    schedule_id: int,
+    data: AssignmentCreate,
+) -> Assignment:
+    schedule = _get_schedule_or_404(db, schedule_id)
+
+    shift = (
+        db.query(Shift)
+        .filter(
+            Shift.id == data.shift_id,
+            Shift.schedule_id == schedule_id,
+        )
+        .first()
+    )
+
+    if shift is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shift not found on this schedule",
+        )
+
+    technician = (
+        db.query(Technician)
+        .filter(Technician.id == data.technician_id)
+        .first()
+    )
+
+    if technician is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Technician not found",
+        )
+
+    already_assigned = (
+        db.query(Assignment)
+        .filter(
+            Assignment.shift_id == shift.id,
+            Assignment.technician_id == technician.id,
+        )
+        .first()
+    )
+
+    if already_assigned is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This technician is already assigned to this shift.",
+        )
+
+    _validate_technician_for_shift(
+        db, schedule, shift, technician, excluding_assignment_id=None
+    )
+
+    category_id = data.category_id
+
+    if category_id is not None:
+        _get_active_category_or_404(db, category_id)
+    else:
+        working_category = _get_default_working_category(db)
+        category_id = working_category.id if working_category else None
+
+    assignment = Assignment(
+        schedule_id=schedule_id,
+        shift_id=shift.id,
+        technician_id=technician.id,
+        status="scheduled",
+        category_id=category_id,
+    )
+
+    db.add(assignment)
+    db.commit()
+    db.refresh(assignment)
+
+    return assignment
+
+
+def edit_assignment(
+    db: Session,
+    assignment_id: int,
+    update: AssignmentUpdate,
+) -> Assignment:
+    assignment = (
+        db.query(Assignment)
+        .filter(Assignment.id == assignment_id)
+        .first()
+    )
+
+    if assignment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assignment not found",
+        )
+
+    schedule = _get_schedule_or_404(db, assignment.schedule_id)
+
+    shift = (
+        db.query(Shift)
+        .filter(Shift.id == assignment.shift_id)
+        .first()
+    )
+
+    if shift is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shift not found",
+        )
+
+    if update.technician_id is not None:
+        new_technician = (
+            db.query(Technician)
+            .filter(Technician.id == update.technician_id)
+            .first()
+        )
+
+        if new_technician is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Technician not found",
+            )
+
+        _validate_technician_for_shift(
+            db,
+            schedule,
+            shift,
+            new_technician,
+            excluding_assignment_id=assignment.id,
+        )
+
+        assignment.technician_id = new_technician.id
+
+    if update.clear_category:
+        assignment.category_id = None
+    elif update.category_id is not None:
+        _get_active_category_or_404(db, update.category_id)
+        assignment.category_id = update.category_id
 
     db.commit()
     db.refresh(assignment)
@@ -508,8 +664,8 @@ def _generate_unique_schedule_token(db: Session) -> str:
         token = secrets.token_urlsafe(12)
 
         existing = (
-            db.query(CollectionCampaign)
-            .filter(CollectionCampaign.schedule_public_token == token)
+            db.query(Schedule)
+            .filter(Schedule.public_token == token)
             .first()
         )
 
@@ -519,13 +675,13 @@ def _generate_unique_schedule_token(db: Session) -> str:
 
 def publish_schedule(
     db: Session,
-    campaign_id: int,
+    schedule_id: int,
 ) -> dict:
-    campaign = _get_campaign_or_404(db, campaign_id)
+    schedule = _get_schedule_or_404(db, schedule_id)
 
     has_assignments = (
         db.query(Assignment)
-        .filter(Assignment.campaign_id == campaign_id)
+        .filter(Assignment.schedule_id == schedule_id)
         .first()
         is not None
     )
@@ -534,36 +690,33 @@ def publish_schedule(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
-                "Generate a schedule with at least one assignment "
-                "before publishing"
+                "Add at least one assignment before publishing this "
+                "schedule."
             ),
         )
 
-    if campaign.schedule_public_token is None:
-        campaign.schedule_public_token = (
-            _generate_unique_schedule_token(db)
-        )
+    if schedule.public_token is None:
+        schedule.public_token = _generate_unique_schedule_token(db)
 
-    campaign.schedule_published_at = datetime.now(timezone.utc)
+    schedule.published_at = datetime.now(timezone.utc)
+    schedule.status = "published"
 
     db.commit()
 
-    return get_schedule(db, campaign_id)
+    return get_schedule_board(db, schedule_id)
 
 
 def get_public_schedule(
     db: Session,
     public_token: str,
 ) -> dict:
-    campaign = (
-        db.query(CollectionCampaign)
-        .filter(
-            CollectionCampaign.schedule_public_token == public_token
-        )
+    schedule = (
+        db.query(Schedule)
+        .filter(Schedule.public_token == public_token)
         .first()
     )
 
-    if campaign is None or campaign.schedule_published_at is None:
+    if schedule is None or schedule.published_at is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Published schedule not found",
@@ -571,14 +724,14 @@ def get_public_schedule(
 
     assignments = (
         db.query(Assignment)
-        .filter(Assignment.campaign_id == campaign.id)
+        .filter(Assignment.schedule_id == schedule.id)
         .all()
     )
 
     shifts_by_id = {
         shift.id: shift
         for shift in db.query(Shift)
-        .filter(Shift.campaign_id == campaign.id)
+        .filter(Shift.schedule_id == schedule.id)
         .all()
     }
 
@@ -597,6 +750,40 @@ def get_public_schedule(
         else {}
     )
 
+    location_ids = {
+        shift.location_id
+        for shift in shifts_by_id.values()
+        if shift.location_id is not None
+    }
+
+    locations_by_id = (
+        {
+            location.id: location
+            for location in db.query(Location)
+            .filter(Location.id.in_(location_ids))
+            .all()
+        }
+        if location_ids
+        else {}
+    )
+
+    category_ids = {
+        assignment.category_id
+        for assignment in assignments
+        if assignment.category_id is not None
+    }
+
+    categories_by_id = (
+        {
+            category.id: category
+            for category in db.query(ScheduleCategory)
+            .filter(ScheduleCategory.id.in_(category_ids))
+            .all()
+        }
+        if category_ids
+        else {}
+    )
+
     public_assignments = []
     hours_by_technician: dict[int, float] = defaultdict(float)
 
@@ -607,6 +794,17 @@ def get_public_schedule(
         if shift is None or technician is None:
             continue
 
+        location = (
+            locations_by_id.get(shift.location_id)
+            if shift.location_id
+            else None
+        )
+        category = (
+            categories_by_id.get(assignment.category_id)
+            if assignment.category_id
+            else None
+        )
+
         public_assignments.append(
             {
                 "shift_id": shift.id,
@@ -614,6 +812,9 @@ def get_public_schedule(
                 "start_time": shift.start_time,
                 "end_time": shift.end_time,
                 "technician_name": technician.name,
+                "location_name": location.name if location else None,
+                "category_name": category.name if category else None,
+                "category_color": category.color if category else None,
             }
         )
 
@@ -641,9 +842,9 @@ def get_public_schedule(
     )
 
     return {
-        "campaign_name": campaign.name,
-        "semester": campaign.semester,
-        "published_at": campaign.schedule_published_at,
+        "schedule_name": schedule.name,
+        "semester": schedule.semester,
+        "published_at": schedule.published_at,
         "assignments": public_assignments,
         "technician_hours": technician_hours,
     }

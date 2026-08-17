@@ -13,9 +13,9 @@ class Assignment(Base):
         index=True,
     )
 
-    campaign_id = Column(
+    schedule_id = Column(
         Integer,
-        ForeignKey("collection_campaigns.id"),
+        ForeignKey("schedules.id"),
         nullable=False,
         index=True,
     )
@@ -38,6 +38,16 @@ class Assignment(Base):
         String(20),
         nullable=False,
         default="scheduled",
+    )
+
+    # Diana-configurable status/category for this assignment (Working, On
+    # Leave, Training, etc.), shown with its color and its name. Optional
+    # so assignments made before this feature keep working.
+    category_id = Column(
+        Integer,
+        ForeignKey("schedule_categories.id"),
+        nullable=True,
+        index=True,
     )
 
     created_at = Column(
