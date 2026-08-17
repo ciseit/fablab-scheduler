@@ -123,6 +123,25 @@ def create_public_availability_submission(
             detail="Technician not found for this email",
         )
 
+    existing_submission = (
+        db.query(Availability)
+        .filter(
+            Availability.technician_id == technician.id,
+            Availability.campaign_id == campaign.id,
+        )
+        .first()
+    )
+
+    if existing_submission is not None and not submission.replace_existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "You have already submitted availability for this "
+                "request. Submit again and confirm replacing your "
+                "previous answers if you need to make changes."
+            ),
+        )
+
     submitted_blocks = set()
     new_availabilities = []
 
@@ -145,34 +164,6 @@ def create_public_availability_submission(
 
         submitted_blocks.add(block_key)
 
-        existing_availability = (
-            db.query(Availability)
-            .filter(
-                Availability.technician_id
-                == technician.id,
-                Availability.campaign_id
-                == campaign.id,
-                Availability.day_of_week
-                == block.day_of_week.value,
-                Availability.start_time
-                == block.start_time,
-                Availability.end_time
-                == block.end_time,
-                Availability.availability_type
-                == block.availability_type.value,
-            )
-            .first()
-        )
-
-        if existing_availability is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "One or more availability blocks have "
-                    "already been submitted"
-                ),
-            )
-
         new_availability = Availability(
             technician_id=technician.id,
             campaign_id=campaign.id,
@@ -187,6 +178,20 @@ def create_public_availability_submission(
         new_availabilities.append(new_availability)
 
     try:
+        if existing_submission is not None and submission.replace_existing:
+            # Replace, don't merge: wipe the technician's previous
+            # submission for this request before writing the new one so
+            # the submission count and blocks never silently double up.
+            db.query(Availability).filter(
+                Availability.technician_id == technician.id,
+                Availability.campaign_id == campaign.id,
+            ).delete(synchronize_session=False)
+
+            # The delete above bypassed the session's identity map, so a
+            # freshly inserted row could otherwise collide with a stale
+            # identity for a deleted row that reused the same primary key.
+            db.expunge_all()
+
         db.add_all(new_availabilities)
         db.commit()
 

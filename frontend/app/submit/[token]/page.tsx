@@ -49,6 +49,8 @@ const days = [
   "Wednesday",
   "Thursday",
   "Friday",
+  "Saturday",
+  "Sunday",
 ] as const;
 
 type DayName = (typeof days)[number];
@@ -83,6 +85,18 @@ const initialAvailability: Record<
   },
   Friday: {
     enabled: true,
+    start_time: "09:00",
+    end_time: "17:00",
+    availability_type: "available",
+  },
+  Saturday: {
+    enabled: false,
+    start_time: "09:00",
+    end_time: "17:00",
+    availability_type: "available",
+  },
+  Sunday: {
+    enabled: false,
     start_time: "09:00",
     end_time: "17:00",
     availability_type: "available",
@@ -314,27 +328,9 @@ export default function AvailabilitySubmissionPage() {
     });
   }
 
-  async function handleSubmit(
-    event: FormEvent<HTMLFormElement>
+  async function submitAvailability(
+    replaceExisting: boolean
   ) {
-    event.preventDefault();
-
-    if (
-      submitting ||
-      requestIsClosed
-    ) {
-      return;
-    }
-
-    setSubmissionError("");
-
-    const validationError = validateForm();
-
-    if (validationError) {
-      setSubmissionError(validationError);
-      return;
-    }
-
     const availabilityBlocks =
       buildAvailabilityBlocks();
 
@@ -348,6 +344,7 @@ export default function AvailabilitySubmissionPage() {
             .toLowerCase(),
           availability_blocks:
             availabilityBlocks,
+          replace_existing: replaceExisting,
         });
 
       setSubmittedBlockCount(
@@ -379,14 +376,28 @@ export default function AvailabilitySubmissionPage() {
         );
       } else if (
         normalizedMessage.includes(
-          "already been submitted"
-        ) ||
-        normalizedMessage.includes(
-          "duplicate"
+          "already submitted availability"
         )
       ) {
+        const confirmedReplace = window.confirm(
+          "You've already submitted availability for this request. " +
+            "Submitting again will replace your previous answers with " +
+            "what you've entered now. Continue?"
+        );
+
+        if (confirmedReplace) {
+          await submitAvailability(true);
+          return;
+        }
+
         setSubmissionError(
-          "One or more of these availability blocks have already been submitted. Please contact your FABLAB administrator if you need to revise your availability."
+          "Your previous submission was kept unchanged."
+        );
+      } else if (
+        normalizedMessage.includes("duplicate")
+      ) {
+        setSubmissionError(
+          "This form has the same day entered more than once. Please review your entries and try again."
         );
       } else if (
         normalizedMessage.includes(
@@ -402,6 +413,30 @@ export default function AvailabilitySubmissionPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (
+      submitting ||
+      requestIsClosed
+    ) {
+      return;
+    }
+
+    setSubmissionError("");
+
+    const validationError = validateForm();
+
+    if (validationError) {
+      setSubmissionError(validationError);
+      return;
+    }
+
+    await submitAvailability(false);
   }
 
   if (loading) {

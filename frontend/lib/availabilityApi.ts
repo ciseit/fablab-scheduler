@@ -25,6 +25,7 @@ export type PublicAvailabilityBlock = {
 export type PublicAvailabilitySubmission = {
   email: string;
   availability_blocks: PublicAvailabilityBlock[];
+  replace_existing?: boolean;
 };
 
 export type AvailabilityResponse = {

@@ -101,3 +101,9 @@ class PublicAvailabilitySubmission(BaseModel):
     availability_blocks: list[PublicAvailabilityBlock] = Field(
         min_length=1
     )
+
+    # When a technician has already submitted availability for this
+    # request, the backend rejects the new submission unless this is set,
+    # in which case the previous submission is replaced (not merged) with
+    # the new one.
+    replace_existing: bool = False
