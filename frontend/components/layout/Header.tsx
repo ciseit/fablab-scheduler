@@ -1,48 +1,80 @@
 "use client";
 
-import {
-  Bell,
-  ChevronDown,
-  LogOut,
-  Plus,
-  Search,
-} from "lucide-react";
+import { ChevronDown, LogOut, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function Header() {
   const router = useRouter();
 
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
+  const newMenuRef = useRef<HTMLDivElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as Node;
+
+      if (
+        newMenuRef.current &&
+        !newMenuRef.current.contains(target)
+      ) {
+        setNewMenuOpen(false);
+      }
+
+      if (
+        profileMenuRef.current &&
+        !profileMenuRef.current.contains(target)
+      ) {
+        setProfileMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  function navigateTo(path: string) {
+    setNewMenuOpen(false);
+    router.push(path);
+  }
+
   async function handleLogout() {
+    if (loggingOut) {
+      return;
+    }
+
     setLoggingOut(true);
 
     try {
       const response = await fetch("/api/backend/auth/logout", {
         method: "POST",
+        credentials: "include",
       });
 
       if (!response.ok) {
-        console.error(
-          "Logout failed with status:",
-          response.status
-        );
-
-        return;
+        console.error("Logout request failed");
       }
-
-      router.push("/login");
-      router.refresh();
     } catch (error) {
-      console.error("Logout failed:", error);
+      console.error("Unable to contact backend during logout:", error);
     } finally {
+      setProfileMenuOpen(false);
       setLoggingOut(false);
+
+      router.replace("/login");
+      router.refresh();
     }
   }
 
   return (
     <header className="flex h-20 items-center justify-between border-b border-gray-200 bg-white px-8">
+      {/* Page title */}
       <div>
         <p className="text-sm text-gray-500">
           FABLAB Scheduler
@@ -53,66 +85,96 @@ export default function Header() {
         </h2>
       </div>
 
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          aria-label="Search"
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 transition hover:bg-gray-50"
-        >
-          <Search size={18} />
-        </button>
-
-        <button
-          type="button"
-          aria-label="Notifications"
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 transition hover:bg-gray-50"
-        >
-          <Bell size={18} />
-        </button>
-
-        <details className="relative">
-          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg bg-black px-4 py-2.5 text-sm font-medium text-white">
+      {/* Header actions */}
+      <div className="flex items-center gap-4">
+        {/* New menu */}
+        <div ref={newMenuRef} className="relative">
+          <button
+            type="button"
+            onClick={() => {
+              setNewMenuOpen((current) => !current);
+              setProfileMenuOpen(false);
+            }}
+            className="flex h-11 items-center gap-2 rounded-lg bg-black px-5 text-sm font-medium text-white transition hover:bg-gray-800"
+          >
             <Plus size={18} />
-            New
-            <ChevronDown size={16} />
-          </summary>
+            <span>New</span>
+            <ChevronDown
+              size={16}
+              className={`transition-transform ${
+                newMenuOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
 
-          <div className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
-            <button
-              type="button"
-              className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
-            >
-              + Availability Request
-            </button>
+          {newMenuOpen && (
+            <div className="absolute right-0 top-14 z-50 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white py-2 shadow-lg">
+              <button
+                type="button"
+                onClick={() => navigateTo("/availability-requests")}
+                className="block w-full px-4 py-3 text-left text-sm text-gray-700 transition hover:bg-gray-50"
+              >
+                New Availability Request
+              </button>
 
-            <button
-              type="button"
-              className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
-            >
-              + Technician
-            </button>
-          </div>
-        </details>
+              <button
+                type="button"
+                onClick={() => navigateTo("/technicians")}
+                className="block w-full px-4 py-3 text-left text-sm text-gray-700 transition hover:bg-gray-50"
+              >
+                Add Technician
+              </button>
 
-        <details className="relative ml-2">
-          <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full bg-gray-900 text-sm font-semibold text-white">
+              <button
+                type="button"
+                onClick={() => navigateTo("/schedule-builder")}
+                className="block w-full px-4 py-3 text-left text-sm text-gray-700 transition hover:bg-gray-50"
+              >
+                Schedule Builder
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Administrator profile */}
+        <div ref={profileMenuRef} className="relative">
+          <button
+            type="button"
+            onClick={() => {
+              setProfileMenuOpen((current) => !current);
+              setNewMenuOpen(false);
+            }}
+            aria-label="Open administrator menu"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white transition hover:bg-slate-700"
+          >
             DJ
-          </summary>
+          </button>
 
-          <div className="absolute right-0 z-50 mt-2 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={loggingOut}
-              className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <LogOut size={16} />
+          {profileMenuOpen && (
+            <div className="absolute right-0 top-14 z-50 w-52 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+              <div className="border-b border-gray-100 px-4 py-3">
+                <p className="text-sm font-medium text-gray-900">
+                  Administrator
+                </p>
 
-              {loggingOut ? "Signing out..." : "Log out"}
-            </button>
-          </div>
-        </details>
+                <p className="mt-1 text-xs text-gray-500">
+                  FABLAB Scheduler
+                </p>
+              </div>
 
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <LogOut size={17} />
+
+                {loggingOut ? "Signing out..." : "Sign out"}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );
