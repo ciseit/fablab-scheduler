@@ -8,6 +8,8 @@ import {
   updateCurrentAdmin,
   type AdminApiResponse,
 } from "@/lib/authApi";
+import LocationsSettings from "@/components/settings/LocationsSettings";
+import ScheduleCategoriesSettings from "@/components/settings/ScheduleCategoriesSettings";
 
 export default function SettingsPage() {
   const [admin, setAdmin] = useState<AdminApiResponse | null>(
@@ -206,6 +208,9 @@ export default function SettingsPage() {
             </form>
           </div>
         ) : null}
+
+        <LocationsSettings />
+        <ScheduleCategoriesSettings />
       </div>
     </AppLayout>
   );
