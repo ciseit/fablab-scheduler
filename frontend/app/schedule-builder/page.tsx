@@ -878,13 +878,13 @@ export default function ScheduleBuilderPage() {
 
               <div className="flex-1">
                 <h2 className="text-lg font-semibold text-neutral-950">
-                  Technicians below {minimumWeeklyHours} hours
+                  Technicians Needing More Hours
                 </h2>
 
                 <p className="mt-1 text-sm text-neutral-600">
-                  These technicians could not reach the{" "}
-                  {minimumWeeklyHours}-hour weekly minimum with the
-                  current availability and shifts.
+                  These technicians currently have fewer than the
+                  required weekly hours ({minimumWeeklyHours} hrs for
+                  this availability request).
                 </p>
 
                 <ul className="mt-4 space-y-2">
@@ -912,12 +912,13 @@ export default function ScheduleBuilderPage() {
         <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
           <div className="border-b border-neutral-200 px-6 py-5">
             <h2 className="text-lg font-semibold text-neutral-950">
-              Schedule Preview
+              Draft Schedule
             </h2>
 
             <p className="mt-1 text-sm text-neutral-500">
-              Assignments are grouped by day. Reassign a shift using the
-              technician dropdown.
+              Review who has been assigned to each shift before
+              publishing. Assignments are grouped by day — reassign a
+              shift using the technician dropdown.
             </p>
           </div>
 
@@ -1040,11 +1041,12 @@ export default function ScheduleBuilderPage() {
 
             <div>
               <h2 className="text-lg font-semibold text-neutral-950">
-                Weekly Hours by Technician
+                Hours Assigned to Each Technician
               </h2>
 
               <p className="mt-1 text-sm text-neutral-500">
-                Totals reflect the currently generated schedule.
+                See how many hours each technician has been assigned in
+                this draft.
               </p>
             </div>
           </div>
