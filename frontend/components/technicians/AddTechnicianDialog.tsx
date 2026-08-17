@@ -291,10 +291,13 @@ export default function AddTechnicianDialog({
               <span className="text-sm font-medium text-neutral-700">
                 Assignment type
               </span>
+              <span className="block text-xs text-neutral-500">
+                What kind of placement is this? A general category.
+              </span>
 
               <input
                 required
-                placeholder="School Site, Lab, Project, Other"
+                placeholder="e.g. FABLAB, School Site, Event, Outreach, Training"
                 value={form.assignmentType}
                 disabled={saving}
                 onChange={(event) =>
@@ -312,10 +315,13 @@ export default function AddTechnicianDialog({
             <span className="text-sm font-medium text-neutral-700">
               Assignment name
             </span>
+            <span className="block text-xs text-neutral-500">
+              The specific site or project name for this placement.
+            </span>
 
             <input
               required
-              placeholder="Carson High School, Laser Lab, FABLAB Scheduler..."
+              placeholder="e.g. Carson High School, Robotics Workshop, Laser Lab"
               value={form.assignmentName}
               disabled={saving}
               onChange={(event) =>

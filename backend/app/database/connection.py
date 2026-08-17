@@ -51,3 +51,23 @@ def run_startup_migrations() -> None:
                     "ALTER TABLE technicians ADD COLUMN assignment_type VARCHAR(100)"
                 )
             )
+
+    if "assignment_name" not in existing_columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE technicians ADD COLUMN assignment_name VARCHAR(150)"
+                )
+            )
+
+        # The frontend previously had no real "assignment name" column and
+        # stored that value in `notes` instead. Backfill it here so existing
+        # demo/production data is not lost, without touching genuine notes
+        # for technicians that never had this workaround applied.
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "UPDATE technicians SET assignment_name = notes, notes = NULL "
+                    "WHERE assignment_name IS NULL AND notes IS NOT NULL"
+                )
+            )

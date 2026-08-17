@@ -18,6 +18,13 @@ class Technician(Base):
 
     weekly_target_hours = Column(Float, default=15.0)
 
+    # Category of this technician's placement, e.g. "FABLAB", "School Site",
+    # "Event", "Outreach", "Training".
     assignment_type = Column(String(100), nullable=True)
+
+    # The specific site/project name for that placement, e.g. "Carson High
+    # School", "Robotics Workshop". Distinct from assignment_type (the
+    # category) and from notes (free-text remarks).
+    assignment_name = Column(String(150), nullable=True)
 
     notes = Column(String, nullable=True)

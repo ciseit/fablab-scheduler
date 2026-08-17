@@ -219,6 +219,38 @@ class TechnicianDeletionTestCase(unittest.TestCase):
             get_response.json()["assignment_type"], "School Site"
         )
 
+    def test_technician_assignment_name_is_distinct_from_notes(self):
+        # assignment_type is a category (e.g. "School Site") while
+        # assignment_name is the specific site/project (e.g. "Carson High
+        # School"), and neither should be conflated with free-text notes.
+        created = self.create_technician(
+            "Assignment Name Tech",
+            "assignname@example.com",
+            assignment_type="School Site",
+            assignment_name="Carson High School",
+            notes="Prefers morning shifts",
+        )
+        self.assertEqual(created["assignment_name"], "Carson High School")
+        self.assertEqual(created["notes"], "Prefers morning shifts")
+
+        update_response = self.client.patch(
+            f"/technicians/{created['id']}",
+            json={"assignment_name": "Robotics Workshop"},
+        )
+        self.assertEqual(update_response.status_code, 200, update_response.text)
+        self.assertEqual(
+            update_response.json()["assignment_name"], "Robotics Workshop"
+        )
+        # Updating assignment_name must not touch notes.
+        self.assertEqual(
+            update_response.json()["notes"], "Prefers morning shifts"
+        )
+
+        get_response = self.client.get(f"/technicians/{created['id']}")
+        self.assertEqual(
+            get_response.json()["assignment_name"], "Robotics Workshop"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
