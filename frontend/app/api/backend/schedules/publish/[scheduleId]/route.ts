@@ -4,7 +4,7 @@ import { proxyToBackend } from "@/lib/backendProxy";
 
 type RouteContext = {
   params: Promise<{
-    campaignId: string;
+    scheduleId: string;
   }>;
 };
 
@@ -12,11 +12,11 @@ export async function POST(
   request: NextRequest,
   context: RouteContext
 ) {
-  const { campaignId } = await context.params;
+  const { scheduleId } = await context.params;
 
   return proxyToBackend(
     request,
-    `/schedules/generate/${campaignId}`,
+    `/schedules/publish/${scheduleId}`,
     {
       method: "POST",
     }

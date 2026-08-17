@@ -4,16 +4,19 @@ import { useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 
 import type { ShiftDay } from "@/lib/shiftApi";
+import type { LocationApiResponse } from "@/lib/locationApi";
 
 export type ShiftFormData = {
   day_of_week: ShiftDay;
   start_time: string;
   end_time: string;
   required_technicians: number;
+  location_id: number | null;
 };
 
 type CreateShiftDialogProps = {
   open: boolean;
+  locations: LocationApiResponse[];
   onClose: () => void;
   onSave: (data: ShiftFormData) => Promise<void>;
 };
@@ -33,10 +36,12 @@ const initialFormData: ShiftFormData = {
   start_time: "09:00",
   end_time: "17:00",
   required_technicians: 1,
+  location_id: null,
 };
 
 export default function CreateShiftDialog({
   open,
+  locations,
   onClose,
   onSave,
 }: CreateShiftDialogProps) {
@@ -213,6 +218,39 @@ export default function CreateShiftDialog({
               />
             </label>
           </div>
+
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-neutral-700">
+              Location / site
+            </span>
+            <span className="block text-xs text-neutral-500">
+              Where this shift takes place. Optional.
+            </span>
+
+            <select
+              value={formData.location_id ?? ""}
+              disabled={saving}
+              onChange={(event) =>
+                updateField(
+                  "location_id",
+                  event.target.value
+                    ? Number(event.target.value)
+                    : null
+                )
+              }
+              className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 outline-none transition focus:border-neutral-400 disabled:cursor-not-allowed disabled:bg-neutral-100"
+            >
+              <option value="">No location set</option>
+
+              {locations
+                .filter((location) => location.is_active)
+                .map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+            </select>
+          </label>
 
           <label className="block space-y-2">
             <span className="text-sm font-medium text-neutral-700">

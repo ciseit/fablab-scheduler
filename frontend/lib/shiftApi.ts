@@ -78,7 +78,8 @@ export type ShiftDay =
 
 export type ShiftApiResponse = {
   id: number;
-  campaign_id: number;
+  schedule_id: number;
+  location_id: number | null;
   day_of_week: ShiftDay;
   start_time: string;
   end_time: string;
@@ -86,16 +87,17 @@ export type ShiftApiResponse = {
 };
 
 export type ShiftCreatePayload = {
-  campaign_id: number;
+  schedule_id: number;
+  location_id?: number | null;
   day_of_week: ShiftDay;
   start_time: string;
   end_time: string;
   required_technicians: number;
 };
 
-export function getShifts(campaignId: number) {
+export function getShifts(scheduleId: number) {
   return request<ShiftApiResponse[]>(
-    `/shifts?campaign_id=${campaignId}`,
+    `/shifts?schedule_id=${scheduleId}`,
     {},
     "Unable to load shifts. Please try again."
   );

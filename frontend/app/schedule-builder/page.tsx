@@ -7,17 +7,20 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
+  Filter,
   Plus,
   RefreshCw,
   Send,
   Sparkles,
   Users,
+  X,
 } from "lucide-react";
 
 import AppLayout from "@/components/layout/AppLayout";
 import CreateShiftDialog, {
   type ShiftFormData,
 } from "@/components/schedule-builder/CreateShiftDialog";
+import CreateScheduleDialog from "@/components/schedule-builder/CreateScheduleDialog";
 
 import { getTechnicians } from "@/lib/technicianApi";
 import {
@@ -31,12 +34,22 @@ import {
   type ShiftDay,
 } from "@/lib/shiftApi";
 import {
+  createAssignment,
+  createSchedule,
   editAssignment,
   generateSchedule,
-  getSchedule,
+  getScheduleBoard,
+  getSchedules,
   publishSchedule,
-  type ScheduleApiResponse,
+  type CreateSchedulePayload,
+  type ScheduleBoardApiResponse,
+  type ScheduleListApiResponse,
 } from "@/lib/scheduleApi";
+import { getLocations, type LocationApiResponse } from "@/lib/locationApi";
+import {
+  getScheduleCategories,
+  type ScheduleCategoryApiResponse,
+} from "@/lib/scheduleCategoryApi";
 
 type ApiTechnician = {
   id: number;
@@ -100,21 +113,27 @@ function buildPublicScheduleUrl(publicToken: string) {
 }
 
 export default function ScheduleBuilderPage() {
-  const [campaigns, setCampaigns] = useState<
-    AvailabilityRequestApiResponse[]
-  >([]);
-  const [selectedCampaignId, setSelectedCampaignId] = useState<
+  const [schedules, setSchedules] = useState<ScheduleListApiResponse[]>([]);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<
     number | null
   >(null);
 
+  const [availabilityRequests, setAvailabilityRequests] = useState<
+    AvailabilityRequestApiResponse[]
+  >([]);
+
   const [technicians, setTechnicians] = useState<ApiTechnician[]>([]);
   const [shifts, setShifts] = useState<ShiftApiResponse[]>([]);
-  const [schedule, setSchedule] = useState<ScheduleApiResponse | null>(
+  const [locations, setLocations] = useState<LocationApiResponse[]>([]);
+  const [categories, setCategories] = useState<
+    ScheduleCategoryApiResponse[]
+  >([]);
+  const [board, setBoard] = useState<ScheduleBoardApiResponse | null>(
     null
   );
 
-  const [loadingCampaigns, setLoadingCampaigns] = useState(true);
-  const [loadingSchedule, setLoadingSchedule] = useState(false);
+  const [loadingSchedules, setLoadingSchedules] = useState(true);
+  const [loadingBoard, setLoadingBoard] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -129,71 +148,102 @@ export default function ScheduleBuilderPage() {
     {}
   );
 
+  const [assigningShiftId, setAssigningShiftId] = useState<
+    number | null
+  >(null);
+  const [assignPickerTechnicianId, setAssignPickerTechnicianId] =
+    useState<number | "">("");
+  const [assigningInProgress, setAssigningInProgress] = useState(false);
+
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
 
-  useEffect(() => {
-    async function loadCampaigns() {
-      setLoadingCampaigns(true);
-      setError("");
+  const [filterTechnicianId, setFilterTechnicianId] = useState<
+    number | ""
+  >("");
+  const [filterLocationId, setFilterLocationId] = useState<number | "">(
+    ""
+  );
+  const [filterDay, setFilterDay] = useState<ShiftDay | "">("");
+  const [filterCategoryId, setFilterCategoryId] = useState<
+    number | ""
+  >("");
 
-      try {
-        const data = await getAvailabilityRequests();
-        setCampaigns(data);
-
-        const searchParams = new URLSearchParams(
-          window.location.search
-        );
-        const campaignIdParam = searchParams.get("campaignId");
-        const preselectedId = campaignIdParam
-          ? Number(campaignIdParam)
-          : null;
-
-        if (
-          preselectedId &&
-          data.some((campaign) => campaign.id === preselectedId)
-        ) {
-          setSelectedCampaignId(preselectedId);
-        } else if (data.length > 0) {
-          setSelectedCampaignId(data[0].id);
-        }
-      } catch (loadError) {
-        console.error(
-          "Failed to load availability requests:",
-          loadError
-        );
-
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Unable to load availability requests."
-        );
-      } finally {
-        setLoadingCampaigns(false);
-      }
-    }
-
-    void loadCampaigns();
-  }, []);
-
-  async function loadScheduleData(campaignId: number) {
-    setLoadingSchedule(true);
+  async function loadStaticData() {
+    setLoadingSchedules(true);
     setError("");
 
     try {
-      const [technicianData, shiftData, scheduleData] =
+      const [scheduleData, requestData, technicianData, locationData, categoryData] =
         await Promise.all([
+          getSchedules(),
+          getAvailabilityRequests(),
           getTechnicians(),
-          getShifts(campaignId),
-          getSchedule(campaignId),
+          getLocations(),
+          getScheduleCategories(),
         ]);
 
+      setSchedules(scheduleData);
+      setAvailabilityRequests(requestData);
       setTechnicians(technicianData as ApiTechnician[]);
-      setShifts(shiftData);
-      setSchedule(scheduleData);
+      setLocations(locationData);
+      setCategories(categoryData);
 
-      // A freshly loaded schedule may reuse assignment ids from a
-      // previous snapshot (e.g. after a regenerate), so any row errors
-      // keyed by those ids no longer refer to the same logical row.
+      const searchParams = new URLSearchParams(window.location.search);
+      const scheduleIdParam = searchParams.get("scheduleId");
+      const campaignIdParam = searchParams.get("campaignId");
+
+      const preselectedById = scheduleIdParam
+        ? scheduleData.find(
+            (candidate) => candidate.id === Number(scheduleIdParam)
+          )
+        : null;
+
+      const preselectedByCampaign = campaignIdParam
+        ? scheduleData.find(
+            (candidate) => candidate.campaign_id === Number(campaignIdParam)
+          )
+        : null;
+
+      const preselected =
+        preselectedById ?? preselectedByCampaign ?? scheduleData[0] ?? null;
+
+      if (preselected) {
+        setSelectedScheduleId(preselected.id);
+      }
+    } catch (loadError) {
+      console.error("Failed to load schedule builder data:", loadError);
+
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load schedules."
+      );
+    } finally {
+      setLoadingSchedules(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadStaticData();
+  }, []);
+
+  async function loadScheduleData(scheduleId: number) {
+    setLoadingBoard(true);
+    setError("");
+
+    try {
+      const [shiftData, boardData] = await Promise.all([
+        getShifts(scheduleId),
+        getScheduleBoard(scheduleId),
+      ]);
+
+      setShifts(shiftData);
+      setBoard(boardData);
+
+      // A freshly loaded board may reuse assignment ids from a previous
+      // snapshot (e.g. after a regenerate), so any row errors keyed by
+      // those ids no longer refer to the same logical row.
       setRowErrors({});
     } catch (loadError) {
       console.error("Failed to load schedule data:", loadError);
@@ -204,17 +254,20 @@ export default function ScheduleBuilderPage() {
           : "Unable to load the schedule."
       );
 
-      setSchedule(null);
+      setBoard(null);
     } finally {
-      setLoadingSchedule(false);
+      setLoadingBoard(false);
     }
   }
 
   useEffect(() => {
-    if (selectedCampaignId !== null) {
-      void loadScheduleData(selectedCampaignId);
+    if (selectedScheduleId !== null) {
+      void loadScheduleData(selectedScheduleId);
+    } else {
+      setShifts([]);
+      setBoard(null);
     }
-  }, [selectedCampaignId]);
+  }, [selectedScheduleId]);
 
   function showSuccess(message: string) {
     setSuccessMessage(message);
@@ -240,6 +293,22 @@ export default function ScheduleBuilderPage() {
     return map;
   }, [shifts]);
 
+  const locationById = useMemo(() => {
+    const map = new Map<number, LocationApiResponse>();
+    locations.forEach((location) => {
+      map.set(location.id, location);
+    });
+    return map;
+  }, [locations]);
+
+  const categoryById = useMemo(() => {
+    const map = new Map<number, ScheduleCategoryApiResponse>();
+    categories.forEach((category) => {
+      map.set(category.id, category);
+    });
+    return map;
+  }, [categories]);
+
   const activeTechnicians = useMemo(
     () =>
       technicians.filter(
@@ -248,12 +317,30 @@ export default function ScheduleBuilderPage() {
     [technicians]
   );
 
-  const assignmentRows = useMemo(() => {
-    if (!schedule) {
+  const activeCategories = useMemo(
+    () => categories.filter((category) => category.is_active),
+    [categories]
+  );
+
+  const hasActiveFilters =
+    filterTechnicianId !== "" ||
+    filterLocationId !== "" ||
+    filterDay !== "" ||
+    filterCategoryId !== "";
+
+  function clearFilters() {
+    setFilterTechnicianId("");
+    setFilterLocationId("");
+    setFilterDay("");
+    setFilterCategoryId("");
+  }
+
+  const allAssignmentRows = useMemo(() => {
+    if (!board) {
       return [];
     }
 
-    const rows = schedule.assignments
+    const rows = board.assignments
       .map((assignment) => {
         const shift = shiftById.get(assignment.shift_id);
 
@@ -265,6 +352,12 @@ export default function ScheduleBuilderPage() {
           assignment,
           shift,
           technician: technicianById.get(assignment.technician_id),
+          location: shift.location_id
+            ? locationById.get(shift.location_id)
+            : undefined,
+          category: assignment.category_id
+            ? categoryById.get(assignment.category_id)
+            : undefined,
         };
       })
       .filter(
@@ -283,7 +376,44 @@ export default function ScheduleBuilderPage() {
     });
 
     return rows;
-  }, [schedule, shiftById, technicianById]);
+  }, [board, shiftById, technicianById, locationById, categoryById]);
+
+  const assignmentRows = useMemo(() => {
+    return allAssignmentRows.filter((row) => {
+      if (
+        filterTechnicianId !== "" &&
+        row.assignment.technician_id !== filterTechnicianId
+      ) {
+        return false;
+      }
+
+      if (
+        filterLocationId !== "" &&
+        row.shift.location_id !== filterLocationId
+      ) {
+        return false;
+      }
+
+      if (filterDay !== "" && row.shift.day_of_week !== filterDay) {
+        return false;
+      }
+
+      if (
+        filterCategoryId !== "" &&
+        row.assignment.category_id !== filterCategoryId
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [
+    allAssignmentRows,
+    filterTechnicianId,
+    filterLocationId,
+    filterDay,
+    filterCategoryId,
+  ]);
 
   const dayGroups = useMemo(() => {
     const groups = new Map<ShiftDay, typeof assignmentRows>();
@@ -303,11 +433,11 @@ export default function ScheduleBuilderPage() {
   const belowMinimumIds = useMemo(
     () =>
       new Set(
-        (schedule?.technicians_below_minimum ?? []).map(
+        (board?.technicians_below_minimum ?? []).map(
           (entry) => entry.technician_id
         )
       ),
-    [schedule]
+    [board]
   );
 
   const technicianHours = useMemo(() => {
@@ -317,7 +447,7 @@ export default function ScheduleBuilderPage() {
       hours.set(technician.id, 0);
     });
 
-    (schedule?.assignments ?? []).forEach((assignment) => {
+    (board?.assignments ?? []).forEach((assignment) => {
       const shift = shiftById.get(assignment.shift_id);
 
       if (!shift) {
@@ -338,7 +468,7 @@ export default function ScheduleBuilderPage() {
         hours: hours.get(technician.id) ?? 0,
       }))
       .sort((a, b) => b.hours - a.hours);
-  }, [activeTechnicians, schedule, shiftById]);
+  }, [activeTechnicians, board, shiftById]);
 
   const sortedShifts = useMemo(() => {
     return [...shifts].sort((a, b) => {
@@ -352,16 +482,31 @@ export default function ScheduleBuilderPage() {
     });
   }, [shifts]);
 
-  const selectedCampaign = useMemo(
+  const selectedSchedule = useMemo(
     () =>
-      campaigns.find(
-        (campaign) => campaign.id === selectedCampaignId
-      ) ?? null,
-    [campaigns, selectedCampaignId]
+      schedules.find((schedule) => schedule.id === selectedScheduleId) ??
+      null,
+    [schedules, selectedScheduleId]
   );
 
+  async function handleCreateSchedule(data: CreateSchedulePayload) {
+    try {
+      const created = await createSchedule(data);
+
+      setScheduleDialogOpen(false);
+      showSuccess("Schedule created.");
+
+      const updatedSchedules = await getSchedules();
+      setSchedules(updatedSchedules);
+      setSelectedScheduleId(created.id);
+    } catch (createError) {
+      console.error("Failed to create schedule:", createError);
+      throw createError;
+    }
+  }
+
   async function handleGenerate() {
-    if (selectedCampaignId === null) {
+    if (selectedScheduleId === null) {
       return;
     }
 
@@ -381,12 +526,8 @@ export default function ScheduleBuilderPage() {
     setError("");
 
     try {
-      const result = await generateSchedule(selectedCampaignId);
-      setSchedule(result);
-
-      // Regenerating replaces every assignment row, and the new rows
-      // may reuse ids from the previous schedule, so old row errors
-      // must not carry over.
+      const result = await generateSchedule(selectedScheduleId);
+      setBoard(result);
       setRowErrors({});
 
       showSuccess("Schedule generated.");
@@ -404,7 +545,7 @@ export default function ScheduleBuilderPage() {
   }
 
   async function handlePublish() {
-    if (selectedCampaignId === null) {
+    if (selectedScheduleId === null) {
       return;
     }
 
@@ -412,8 +553,8 @@ export default function ScheduleBuilderPage() {
     setError("");
 
     try {
-      const result = await publishSchedule(selectedCampaignId);
-      setSchedule(result);
+      const result = await publishSchedule(selectedScheduleId);
+      setBoard(result);
       showSuccess("Schedule published.");
     } catch (publishError) {
       console.error("Failed to publish schedule:", publishError);
@@ -429,13 +570,13 @@ export default function ScheduleBuilderPage() {
   }
 
   async function handleCopyLink() {
-    if (!schedule?.public_token) {
+    if (!board?.public_token) {
       return;
     }
 
     try {
       await navigator.clipboard.writeText(
-        buildPublicScheduleUrl(schedule.public_token)
+        buildPublicScheduleUrl(board.public_token)
       );
 
       setLinkCopied(true);
@@ -450,20 +591,20 @@ export default function ScheduleBuilderPage() {
   }
 
   async function handleCreateShift(data: ShiftFormData) {
-    if (selectedCampaignId === null) {
+    if (selectedScheduleId === null) {
       return;
     }
 
     try {
       await createShift({
-        campaign_id: selectedCampaignId,
+        schedule_id: selectedScheduleId,
         ...data,
       });
 
       setShiftDialogOpen(false);
       showSuccess("Shift created.");
 
-      await loadScheduleData(selectedCampaignId);
+      await loadScheduleData(selectedScheduleId);
     } catch (createError) {
       console.error("Failed to create shift:", createError);
       throw createError;
@@ -474,11 +615,7 @@ export default function ScheduleBuilderPage() {
     assignmentId: number,
     technicianId: number
   ) {
-    // Captured before the request so the error message (and the
-    // rollback it describes) refers to the technicians involved in
-    // *this* attempt, not whatever the row happens to render after
-    // state settles.
-    const previousAssignment = schedule?.assignments.find(
+    const previousAssignment = board?.assignments.find(
       (candidate) => candidate.id === assignmentId
     );
     const previousTechnicianName = previousAssignment
@@ -487,13 +624,6 @@ export default function ScheduleBuilderPage() {
     const attemptedTechnicianName =
       technicianById.get(technicianId)?.name ?? "The selected technician";
 
-    // The dropdown itself already rolls back to the previous technician
-    // on failure (we never optimistically update `schedule`), but the
-    // raw backend message ("This technician has no submitted
-    // availability...") reads as if it's about whichever technician the
-    // row currently shows. Name both technicians explicitly so the
-    // error can't be misread as applying to the (still valid) previous
-    // assignment.
     const rollbackNote = previousTechnicianName
       ? ` ${previousTechnicianName} remains assigned to this shift.`
       : "";
@@ -507,10 +637,10 @@ export default function ScheduleBuilderPage() {
     });
 
     try {
-      await editAssignment(assignmentId, technicianId);
+      await editAssignment(assignmentId, { technician_id: technicianId });
 
-      if (selectedCampaignId !== null) {
-        await loadScheduleData(selectedCampaignId);
+      if (selectedScheduleId !== null) {
+        await loadScheduleData(selectedScheduleId);
       }
 
       showSuccess("Assignment updated.");
@@ -531,12 +661,89 @@ export default function ScheduleBuilderPage() {
     }
   }
 
+  async function handleCategoryChange(
+    assignmentId: number,
+    categoryId: number | ""
+  ) {
+    setReassigningId(assignmentId);
+
+    try {
+      await editAssignment(
+        assignmentId,
+        categoryId === ""
+          ? { clear_category: true }
+          : { category_id: categoryId }
+      );
+
+      if (selectedScheduleId !== null) {
+        await loadScheduleData(selectedScheduleId);
+      }
+
+      showSuccess("Status updated.");
+    } catch (updateError) {
+      console.error("Failed to update category:", updateError);
+
+      setError(
+        updateError instanceof Error
+          ? updateError.message
+          : "Unable to update this assignment's status."
+      );
+    } finally {
+      setReassigningId(null);
+    }
+  }
+
+  async function handleManualAssign(shiftId: number) {
+    if (
+      selectedScheduleId === null ||
+      assignPickerTechnicianId === ""
+    ) {
+      return;
+    }
+
+    setAssigningInProgress(true);
+    setError("");
+
+    try {
+      await createAssignment(selectedScheduleId, {
+        shift_id: shiftId,
+        technician_id: assignPickerTechnicianId,
+      });
+
+      setAssigningShiftId(null);
+      setAssignPickerTechnicianId("");
+
+      await loadScheduleData(selectedScheduleId);
+      showSuccess("Technician assigned.");
+    } catch (assignError) {
+      console.error("Failed to assign technician:", assignError);
+
+      setError(
+        assignError instanceof Error
+          ? assignError.message
+          : "Unable to assign this technician to the shift."
+      );
+    } finally {
+      setAssigningInProgress(false);
+    }
+  }
+
   const hasShifts = shifts.length > 0;
-  const hasAssignments = assignmentRows.length > 0;
-  const uncoveredShifts = schedule?.uncovered_shifts ?? [];
-  const belowMinimum = schedule?.technicians_below_minimum ?? [];
-  const minimumWeeklyHours =
-    schedule?.minimum_weekly_hours ?? 15;
+  const hasAssignments = allAssignmentRows.length > 0;
+  const uncoveredShifts = board?.uncovered_shifts ?? [];
+  const belowMinimum = board?.technicians_below_minimum ?? [];
+  const minimumWeeklyHours = board?.minimum_weekly_hours ?? 15;
+
+  const assignedCountByShift = useMemo(() => {
+    const counts = new Map<number, number>();
+    (board?.assignments ?? []).forEach((assignment) => {
+      counts.set(
+        assignment.shift_id,
+        (counts.get(assignment.shift_id) ?? 0) + 1
+      );
+    });
+    return counts;
+  }, [board]);
 
   return (
     <AppLayout>
@@ -548,65 +755,78 @@ export default function ScheduleBuilderPage() {
                 Schedule Builder
               </p>
 
-              {schedule && (
+              {board && (
                 <span
                   className={
-                    schedule.published
+                    board.published
                       ? "rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
                       : "rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600"
                   }
                 >
-                  {schedule.published ? "Published" : "Not Published"}
+                  {board.published ? "Published" : "Not Published"}
                 </span>
               )}
             </div>
 
             <h1 className="mt-3 text-4xl font-semibold tracking-tight text-neutral-950">
-              {selectedCampaign
-                ? selectedCampaign.name
-                : "Schedule Builder"}
+              {selectedSchedule ? selectedSchedule.name : "Schedule Builder"}
             </h1>
 
             <p className="mt-3 max-w-2xl text-base text-neutral-600">
-              {selectedCampaign
-                ? selectedCampaign.semester ||
-                  "Generate and review technician assignments for this availability request."
-                : "Select an availability request to build a schedule."}
+              {selectedSchedule
+                ? selectedSchedule.campaign_name
+                  ? `Linked to "${selectedSchedule.campaign_name}". Generate and review technician assignments, or adjust them by hand.`
+                  : "Built manually — no availability request is linked. Add shifts and assign technicians yourself."
+                : "Create a schedule to get started, or select an existing one."}
             </p>
           </div>
 
           <div className="flex flex-wrap items-start gap-3">
             <select
-              value={selectedCampaignId ?? ""}
+              value={selectedScheduleId ?? ""}
               onChange={(event) =>
-                setSelectedCampaignId(Number(event.target.value))
+                setSelectedScheduleId(
+                  event.target.value ? Number(event.target.value) : null
+                )
               }
-              disabled={loadingCampaigns || campaigns.length === 0}
+              disabled={loadingSchedules || schedules.length === 0}
               className="h-12 rounded-xl border border-neutral-200 bg-white px-4 text-sm font-medium text-neutral-700 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100"
             >
-              {campaigns.length === 0 && (
-                <option value="">No availability requests</option>
+              {schedules.length === 0 && (
+                <option value="">No schedules yet</option>
               )}
 
-              {campaigns.map((campaign) => (
-                <option key={campaign.id} value={campaign.id}>
-                  {campaign.name}
+              {schedules.map((schedule) => (
+                <option key={schedule.id} value={schedule.id}>
+                  {schedule.name}
+                  {schedule.campaign_name
+                    ? ` (${schedule.campaign_name})`
+                    : " (manual)"}
                 </option>
               ))}
             </select>
 
             <button
               type="button"
+              onClick={() => setScheduleDialogOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50"
+            >
+              <Plus size={17} />
+              New Schedule
+            </button>
+
+            <button
+              type="button"
               onClick={() =>
-                selectedCampaignId !== null &&
-                loadScheduleData(selectedCampaignId)
+                selectedScheduleId !== null &&
+                loadScheduleData(selectedScheduleId)
               }
-              disabled={selectedCampaignId === null || loadingSchedule}
+              disabled={selectedScheduleId === null || loadingBoard}
               className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshCw
                 size={17}
-                className={loadingSchedule ? "animate-spin" : ""}
+                className={loadingBoard ? "animate-spin" : ""}
               />
               Refresh
             </button>
@@ -615,14 +835,14 @@ export default function ScheduleBuilderPage() {
               type="button"
               onClick={handleGenerate}
               disabled={
-                selectedCampaignId === null ||
-                generating ||
-                !hasShifts
+                selectedScheduleId === null || generating || !hasShifts
               }
               title={
                 !hasShifts
-                  ? "This availability request has no shifts to schedule yet."
-                  : undefined
+                  ? "This schedule has no shifts to generate yet."
+                  : !selectedSchedule?.campaign_id
+                    ? "No availability request is linked, so nothing will be auto-assigned. Assign technicians manually below instead."
+                    : undefined
               }
               className="flex items-center gap-2 rounded-xl bg-black px-5 py-3 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
             >
@@ -634,13 +854,11 @@ export default function ScheduleBuilderPage() {
               type="button"
               onClick={handlePublish}
               disabled={
-                selectedCampaignId === null ||
-                publishing ||
-                !hasAssignments
+                selectedScheduleId === null || publishing || !hasAssignments
               }
               title={
                 !hasAssignments
-                  ? "Generate a schedule before publishing."
+                  ? "Assign at least one shift before publishing."
                   : undefined
               }
               className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-5 py-3 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -663,7 +881,19 @@ export default function ScheduleBuilderPage() {
           </div>
         )}
 
-        {schedule?.published && schedule.public_token && (
+        {!loadingSchedules && schedules.length === 0 && (
+          <div className="rounded-2xl border border-neutral-200 bg-white p-12 text-center">
+            <p className="font-medium text-neutral-900">
+              No schedules yet
+            </p>
+            <p className="mt-2 text-sm text-neutral-500">
+              Click &ldquo;New Schedule&rdquo; to create one — with or
+              without an availability request.
+            </p>
+          </div>
+        )}
+
+        {board?.published && board.public_token && (
           <section className="rounded-2xl border border-neutral-200 bg-white p-6">
             <h2 className="text-lg font-semibold text-neutral-950">
               Shareable Schedule Link
@@ -676,11 +906,11 @@ export default function ScheduleBuilderPage() {
 
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
               <div className="flex-1 truncate rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700">
-                {buildPublicScheduleUrl(schedule.public_token)}
+                {buildPublicScheduleUrl(board.public_token)}
               </div>
 
               <a
-                href={buildPublicScheduleUrl(schedule.public_token)}
+                href={buildPublicScheduleUrl(board.public_token)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 rounded-xl border border-neutral-200 px-4 py-3 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50"
@@ -740,6 +970,99 @@ export default function ScheduleBuilderPage() {
           </article>
         </section>
 
+        <section className="rounded-2xl border border-neutral-200 bg-white p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+              <Filter size={16} />
+              Filter this view
+            </div>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-50"
+              >
+                <X size={13} />
+                Clear Filters
+              </button>
+            )}
+          </div>
+
+          <p className="mt-1 text-xs text-neutral-500">
+            Filters only change what you see here — they never change the
+            underlying schedule.
+          </p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <select
+              value={filterTechnicianId}
+              onChange={(event) =>
+                setFilterTechnicianId(
+                  event.target.value ? Number(event.target.value) : ""
+                )
+              }
+              className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-700 outline-none focus:border-neutral-400"
+            >
+              <option value="">All technicians</option>
+              {activeTechnicians.map((technician) => (
+                <option key={technician.id} value={technician.id}>
+                  {technician.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterLocationId}
+              onChange={(event) =>
+                setFilterLocationId(
+                  event.target.value ? Number(event.target.value) : ""
+                )
+              }
+              className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-700 outline-none focus:border-neutral-400"
+            >
+              <option value="">All locations</option>
+              {locations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterDay}
+              onChange={(event) =>
+                setFilterDay(event.target.value as ShiftDay | "")
+              }
+              className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-700 outline-none focus:border-neutral-400"
+            >
+              <option value="">All days</option>
+              {(Object.keys(DAY_LABELS) as ShiftDay[]).map((day) => (
+                <option key={day} value={day}>
+                  {DAY_LABELS[day]}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterCategoryId}
+              onChange={(event) =>
+                setFilterCategoryId(
+                  event.target.value ? Number(event.target.value) : ""
+                )
+              }
+              className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-700 outline-none focus:border-neutral-400"
+            >
+              <option value="">All statuses</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </section>
+
         <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 px-6 py-5">
             <div>
@@ -749,14 +1072,14 @@ export default function ScheduleBuilderPage() {
 
               <p className="mt-1 text-sm text-neutral-500">
                 Define the shifts technicians can be scheduled into for
-                this availability request.
+                this schedule.
               </p>
             </div>
 
             <button
               type="button"
               onClick={() => setShiftDialogOpen(true)}
-              disabled={selectedCampaignId === null}
+              disabled={selectedScheduleId === null}
               className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Plus size={17} />
@@ -764,19 +1087,18 @@ export default function ScheduleBuilderPage() {
             </button>
           </div>
 
-          {loadingSchedule ? (
+          {loadingBoard ? (
             <div className="p-12 text-center text-sm text-neutral-500">
               Loading shifts...
             </div>
           ) : !hasShifts ? (
             <div className="p-12 text-center">
               <p className="font-medium text-neutral-900">
-                No shifts have been created for this availability
-                request yet.
+                No shifts have been created for this schedule yet.
               </p>
               <p className="mt-2 text-sm text-neutral-500">
                 Add a shift to define when coverage is needed, then
-                generate a schedule.
+                generate a schedule or assign technicians manually.
               </p>
             </div>
           ) : (
@@ -784,44 +1106,67 @@ export default function ScheduleBuilderPage() {
               <table className="min-w-full">
                 <thead className="border-b border-neutral-200 bg-neutral-50">
                   <tr>
-                    {["Day", "Time", "Required Technicians", "Hours"].map(
-                      (heading) => (
-                        <th
-                          key={heading}
-                          className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500"
-                        >
-                          {heading}
-                        </th>
-                      )
-                    )}
+                    {[
+                      "Day",
+                      "Time",
+                      "Location",
+                      "Required Technicians",
+                      "Hours",
+                    ].map((heading) => (
+                      <th
+                        key={heading}
+                        className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500"
+                      >
+                        {heading}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
 
                 <tbody>
-                  {sortedShifts.map((shift) => (
-                    <tr
-                      key={shift.id}
-                      className="border-b border-neutral-200 last:border-b-0"
-                    >
-                      <td className="px-6 py-4 font-medium text-neutral-950">
-                        {DAY_LABELS[shift.day_of_week]}
-                      </td>
+                  {sortedShifts.map((shift) => {
+                    const location = shift.location_id
+                      ? locationById.get(shift.location_id)
+                      : undefined;
+                    const assignedCount =
+                      assignedCountByShift.get(shift.id) ?? 0;
+                    const needsMore =
+                      assignedCount < shift.required_technicians;
 
-                      <td className="px-6 py-4 text-sm text-neutral-700">
-                        {formatTime(shift.start_time)} –{" "}
-                        {formatTime(shift.end_time)}
-                      </td>
+                    return (
+                      <tr
+                        key={shift.id}
+                        className="border-b border-neutral-200 last:border-b-0"
+                      >
+                        <td className="px-6 py-4 font-medium text-neutral-950">
+                          {DAY_LABELS[shift.day_of_week]}
+                        </td>
 
-                      <td className="px-6 py-4 text-sm text-neutral-700">
-                        {shift.required_technicians}
-                      </td>
+                        <td className="px-6 py-4 text-sm text-neutral-700">
+                          {formatTime(shift.start_time)} –{" "}
+                          {formatTime(shift.end_time)}
+                        </td>
 
-                      <td className="px-6 py-4 text-sm text-neutral-500">
-                        {shiftHours(shift.start_time, shift.end_time)}{" "}
-                        hrs
-                      </td>
-                    </tr>
-                  ))}
+                        <td className="px-6 py-4 text-sm text-neutral-700">
+                          {location ? location.name : "Not set"}
+                        </td>
+
+                        <td className="px-6 py-4 text-sm text-neutral-700">
+                          {assignedCount} of {shift.required_technicians}
+                          {needsMore && (
+                            <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                              needs more
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="px-6 py-4 text-sm text-neutral-500">
+                          {shiftHours(shift.start_time, shift.end_time)}{" "}
+                          hrs
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -842,25 +1187,92 @@ export default function ScheduleBuilderPage() {
 
                 <p className="mt-1 text-sm text-neutral-600">
                   These shifts do not have enough technicians assigned.
+                  Assign someone directly, or generate a schedule if this
+                  schedule is linked to an availability request.
                 </p>
 
-                <ul className="mt-4 space-y-2">
+                <ul className="mt-4 space-y-3">
                   {uncoveredShifts.map((uncovered) => (
                     <li
                       key={uncovered.shift_id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-4 py-3 text-sm"
+                      className="rounded-xl bg-white px-4 py-3 text-sm"
                     >
-                      <span className="font-medium text-neutral-900">
-                        {DAY_LABELS[uncovered.day_of_week]},{" "}
-                        {formatTime(uncovered.start_time)} –{" "}
-                        {formatTime(uncovered.end_time)}
-                      </span>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium text-neutral-900">
+                          {DAY_LABELS[uncovered.day_of_week]},{" "}
+                          {formatTime(uncovered.start_time)} –{" "}
+                          {formatTime(uncovered.end_time)}
+                        </span>
 
-                      <span className="text-amber-700">
-                        {uncovered.assigned_technicians} of{" "}
-                        {uncovered.required_technicians} filled ·{" "}
-                        {uncovered.shortfall} needed
-                      </span>
+                        <span className="text-amber-700">
+                          {uncovered.assigned_technicians} of{" "}
+                          {uncovered.required_technicians} filled ·{" "}
+                          {uncovered.shortfall} needed
+                        </span>
+                      </div>
+
+                      {assigningShiftId === uncovered.shift_id ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <select
+                            value={assignPickerTechnicianId}
+                            onChange={(event) =>
+                              setAssignPickerTechnicianId(
+                                event.target.value
+                                  ? Number(event.target.value)
+                                  : ""
+                              )
+                            }
+                            className="h-9 rounded-lg border border-neutral-200 bg-white px-2 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                          >
+                            <option value="">Choose a technician...</option>
+                            {activeTechnicians.map((technician) => (
+                              <option
+                                key={technician.id}
+                                value={technician.id}
+                              >
+                                {technician.name}
+                              </option>
+                            ))}
+                          </select>
+
+                          <button
+                            type="button"
+                            disabled={
+                              assignPickerTechnicianId === "" ||
+                              assigningInProgress
+                            }
+                            onClick={() =>
+                              handleManualAssign(uncovered.shift_id)
+                            }
+                            className="rounded-lg bg-black px-3 py-1.5 text-xs font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+                          >
+                            {assigningInProgress
+                              ? "Assigning..."
+                              : "Assign"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAssigningShiftId(null);
+                              setAssignPickerTechnicianId("");
+                            }}
+                            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAssigningShiftId(uncovered.shift_id)
+                          }
+                          className="mt-3 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-700 transition hover:bg-neutral-50"
+                        >
+                          + Assign technician
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -884,7 +1296,7 @@ export default function ScheduleBuilderPage() {
                 <p className="mt-1 text-sm text-neutral-600">
                   These technicians currently have fewer than the
                   required weekly hours ({minimumWeeklyHours} hrs for
-                  this availability request).
+                  this schedule).
                 </p>
 
                 <ul className="mt-4 space-y-2">
@@ -909,6 +1321,34 @@ export default function ScheduleBuilderPage() {
           </section>
         )}
 
+        {activeCategories.length > 0 && (
+          <section className="rounded-2xl border border-neutral-200 bg-white p-5">
+            <h2 className="text-sm font-semibold text-neutral-900">
+              Status legend
+            </h2>
+            <p className="mt-1 text-xs text-neutral-500">
+              Manage these in Settings. Color is always paired with a
+              label, never used alone.
+            </p>
+
+            <div className="mt-3 flex flex-wrap gap-3">
+              {activeCategories.map((category) => (
+                <span
+                  key={category.id}
+                  className="flex items-center gap-2 rounded-full border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-700"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: category.color }}
+                  />
+                  {category.name}
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
           <div className="border-b border-neutral-200 px-6 py-5">
             <h2 className="text-lg font-semibold text-neutral-950">
@@ -918,33 +1358,41 @@ export default function ScheduleBuilderPage() {
             <p className="mt-1 text-sm text-neutral-500">
               Review who has been assigned to each shift before
               publishing. Assignments are grouped by day — reassign a
-              shift using the technician dropdown.
+              shift or change its status using the dropdowns.
             </p>
           </div>
 
-          {loadingSchedule ? (
+          {loadingBoard ? (
             <div className="p-12 text-center text-sm text-neutral-500">
               Loading schedule...
             </div>
           ) : !hasShifts ? (
             <div className="p-12 text-center">
               <p className="font-medium text-neutral-900">
-                No shifts have been created for this availability
-                request yet.
+                No shifts have been created for this schedule yet.
               </p>
               <p className="mt-2 text-sm text-neutral-500">
-                Add shifts in the Coverage Shifts section above, then
-                generate a schedule.
+                Add shifts in the Coverage Shifts section above.
               </p>
             </div>
           ) : !hasAssignments ? (
             <div className="p-12 text-center">
               <p className="font-medium text-neutral-900">
-                No schedule generated yet
+                No one has been assigned yet
               </p>
               <p className="mt-2 text-sm text-neutral-500">
-                Click &ldquo;Generate Schedule&rdquo; to assign
-                technicians to these shifts.
+                Click &ldquo;Generate Schedule&rdquo; if this is linked
+                to an availability request, or assign technicians
+                manually above.
+              </p>
+            </div>
+          ) : dayGroups.length === 0 ? (
+            <div className="p-12 text-center">
+              <p className="font-medium text-neutral-900">
+                No assignments match your filters
+              </p>
+              <p className="mt-2 text-sm text-neutral-500">
+                Try clearing filters to see the full draft schedule.
               </p>
             </div>
           ) : (
@@ -958,72 +1406,103 @@ export default function ScheduleBuilderPage() {
                   <div className="overflow-x-auto">
                     <table className="min-w-full">
                       <tbody>
-                        {rows.map(({ assignment, shift, technician }) => (
-                          <tr
-                            key={assignment.id}
-                            className="border-b border-neutral-100 last:border-b-0"
-                          >
-                            <td className="w-56 px-6 py-4 text-sm text-neutral-700">
-                              {formatTime(shift.start_time)} –{" "}
-                              {formatTime(shift.end_time)}
-                            </td>
+                        {rows.map(
+                          ({ assignment, shift, technician, location }) => (
+                            <tr
+                              key={assignment.id}
+                              className="border-b border-neutral-100 last:border-b-0"
+                            >
+                              <td className="w-48 px-6 py-4 text-sm text-neutral-700">
+                                {formatTime(shift.start_time)} –{" "}
+                                {formatTime(shift.end_time)}
+                                <div className="mt-1 text-xs text-neutral-400">
+                                  {location ? location.name : "No location"}
+                                </div>
+                              </td>
 
-                            <td className="px-6 py-4">
-                              <div className="flex flex-col gap-1">
-                                <select
-                                  value={assignment.technician_id}
-                                  onChange={(event) =>
-                                    handleReassign(
-                                      assignment.id,
-                                      Number(event.target.value)
-                                    )
-                                  }
-                                  disabled={
-                                    reassigningId === assignment.id
-                                  }
-                                  className={
-                                    belowMinimumIds.has(
-                                      assignment.technician_id
-                                    )
-                                      ? "h-10 w-full max-w-xs rounded-lg border border-amber-300 bg-amber-50 px-3 text-sm font-medium text-neutral-900 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed"
-                                      : "h-10 w-full max-w-xs rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-900 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed"
-                                  }
-                                >
-                                  {!technician && (
-                                    <option value={assignment.technician_id}>
-                                      Unknown technician
-                                    </option>
-                                  )}
-
-                                  {activeTechnicians.map(
-                                    (candidate) => (
-                                      <option
-                                        key={candidate.id}
-                                        value={candidate.id}
-                                      >
-                                        {candidate.name}
+                              <td className="px-6 py-4">
+                                <div className="flex flex-col gap-1">
+                                  <select
+                                    value={assignment.technician_id}
+                                    onChange={(event) =>
+                                      handleReassign(
+                                        assignment.id,
+                                        Number(event.target.value)
+                                      )
+                                    }
+                                    disabled={
+                                      reassigningId === assignment.id
+                                    }
+                                    className={
+                                      belowMinimumIds.has(
+                                        assignment.technician_id
+                                      )
+                                        ? "h-10 w-full max-w-xs rounded-lg border border-amber-300 bg-amber-50 px-3 text-sm font-medium text-neutral-900 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed"
+                                        : "h-10 w-full max-w-xs rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-900 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed"
+                                    }
+                                  >
+                                    {!technician && (
+                                      <option value={assignment.technician_id}>
+                                        Unknown technician
                                       </option>
-                                    )
+                                    )}
+
+                                    {activeTechnicians.map(
+                                      (candidate) => (
+                                        <option
+                                          key={candidate.id}
+                                          value={candidate.id}
+                                        >
+                                          {candidate.name}
+                                        </option>
+                                      )
+                                    )}
+                                  </select>
+
+                                  {rowErrors[assignment.id] && (
+                                    <p className="text-xs text-red-600">
+                                      {rowErrors[assignment.id]}
+                                    </p>
                                   )}
+                                </div>
+                              </td>
+
+                              <td className="px-6 py-4">
+                                <select
+                                  value={assignment.category_id ?? ""}
+                                  onChange={(event) =>
+                                    handleCategoryChange(
+                                      assignment.id,
+                                      event.target.value
+                                        ? Number(event.target.value)
+                                        : ""
+                                    )
+                                  }
+                                  disabled={reassigningId === assignment.id}
+                                  className="h-10 w-full max-w-[10rem] rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-900 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed"
+                                >
+                                  <option value="">No status</option>
+                                  {categories.map((category) => (
+                                    <option
+                                      key={category.id}
+                                      value={category.id}
+                                    >
+                                      {category.name}
+                                    </option>
+                                  ))}
                                 </select>
+                              </td>
 
-                                {rowErrors[assignment.id] && (
-                                  <p className="text-xs text-red-600">
-                                    {rowErrors[assignment.id]}
-                                  </p>
-                                )}
-                              </div>
-                            </td>
-
-                            <td className="px-6 py-4 text-right text-sm text-neutral-500">
-                              {shiftHours(
-                                shift.start_time,
-                                shift.end_time
-                              )}{" "}
-                              hrs
-                            </td>
-                          </tr>
-                        ))}
+                              <td className="px-6 py-4 text-right text-sm text-neutral-500">
+                                {shiftHours(
+                                  shift.start_time,
+                                  shift.end_time
+                                )}{" "}
+                                hrs
+                              </td>
+                            </tr>
+                          )
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1114,8 +1593,16 @@ export default function ScheduleBuilderPage() {
       <CreateShiftDialog
         key={shiftDialogOpen ? "open" : "closed"}
         open={shiftDialogOpen}
+        locations={locations}
         onClose={() => setShiftDialogOpen(false)}
         onSave={handleCreateShift}
+      />
+
+      <CreateScheduleDialog
+        open={scheduleDialogOpen}
+        availabilityRequests={availabilityRequests}
+        onClose={() => setScheduleDialogOpen(false)}
+        onSave={handleCreateSchedule}
       />
     </AppLayout>
   );

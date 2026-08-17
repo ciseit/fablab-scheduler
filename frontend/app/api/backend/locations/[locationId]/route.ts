@@ -4,21 +4,23 @@ import { proxyToBackend } from "@/lib/backendProxy";
 
 type RouteContext = {
   params: Promise<{
-    campaignId: string;
+    locationId: string;
   }>;
 };
 
-export async function GET(
+export async function PATCH(
   request: NextRequest,
   context: RouteContext
 ) {
-  const { campaignId } = await context.params;
+  const { locationId } = await context.params;
+  const body = await request.text();
 
   return proxyToBackend(
     request,
-    `/schedules/${campaignId}`,
+    `/locations/${locationId}`,
     {
-      method: "GET",
+      method: "PATCH",
+      body,
     }
   );
 }

@@ -25,7 +25,7 @@ import {
   type AvailabilityRequestApiResponse,
 } from "@/lib/availabilityRequestApi";
 import { getShifts, type ShiftDay } from "@/lib/shiftApi";
-import { getSchedule } from "@/lib/scheduleApi";
+import { getSchedules, getScheduleBoard } from "@/lib/scheduleApi";
 
 type ApiTechnician = {
   id: number;
@@ -203,9 +203,21 @@ export default function DashboardPage() {
 
     (async () => {
       try {
-        const [shifts, schedule] = await Promise.all([
-          getShifts(activeCampaign.id),
-          getSchedule(activeCampaign.id),
+        const schedules = await getSchedules();
+        const linkedSchedule = schedules.find(
+          (candidate) => candidate.campaign_id === activeCampaign.id
+        );
+
+        if (!linkedSchedule) {
+          if (!cancelled) {
+            setTodaysItems([]);
+          }
+          return;
+        }
+
+        const [shifts, board] = await Promise.all([
+          getShifts(linkedSchedule.id),
+          getScheduleBoard(linkedSchedule.id),
         ]);
 
         if (cancelled) {
@@ -228,7 +240,7 @@ export default function DashboardPage() {
             startTime: formatTime(shift.start_time),
             endTime: formatTime(shift.end_time),
             requiredTechnicians: shift.required_technicians,
-            technicianNames: schedule.assignments
+            technicianNames: board.assignments
               .filter(
                 (assignment) =>
                   assignment.shift_id === shift.id

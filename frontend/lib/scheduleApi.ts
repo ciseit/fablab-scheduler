@@ -69,12 +69,43 @@ async function request<T>(
   return response.json() as Promise<T>;
 }
 
+export type ScheduleApiResponse = {
+  id: number;
+  name: string;
+  start_date: string | null;
+  end_date: string | null;
+  semester: string | null;
+  notes: string | null;
+  minimum_weekly_hours: number;
+  campaign_id: number | null;
+  status: string;
+  published_at: string | null;
+  public_token: string | null;
+};
+
+export type ScheduleListApiResponse = ScheduleApiResponse & {
+  campaign_name: string | null;
+  shift_count: number;
+  assignment_count: number;
+};
+
+export type CreateSchedulePayload = {
+  name: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  semester?: string | null;
+  notes?: string | null;
+  minimum_weekly_hours: number;
+  campaign_id?: number | null;
+};
+
 export type AssignmentApiResponse = {
   id: number;
-  campaign_id: number;
+  schedule_id: number;
   shift_id: number;
   technician_id: number;
   status: string;
+  category_id: number | null;
 };
 
 export type TechnicianHoursSummaryApiResponse = {
@@ -94,8 +125,8 @@ export type UncoveredShiftApiResponse = {
   shortfall: number;
 };
 
-export type ScheduleApiResponse = {
-  campaign_id: number;
+export type ScheduleBoardApiResponse = {
+  schedule_id: number;
   assignments: AssignmentApiResponse[];
   technicians_below_minimum: TechnicianHoursSummaryApiResponse[];
   uncovered_shifts: UncoveredShiftApiResponse[];
@@ -110,6 +141,9 @@ export type PublicAssignmentApiResponse = {
   start_time: string;
   end_time: string;
   technician_name: string;
+  location_name: string | null;
+  category_name: string | null;
+  category_color: string | null;
 };
 
 export type PublicTechnicianHoursApiResponse = {
@@ -118,46 +152,97 @@ export type PublicTechnicianHoursApiResponse = {
 };
 
 export type PublicScheduleApiResponse = {
-  campaign_name: string;
-  semester: string;
+  schedule_name: string;
+  semester: string | null;
   published_at: string;
   assignments: PublicAssignmentApiResponse[];
   technician_hours: PublicTechnicianHoursApiResponse[];
 };
 
-export function generateSchedule(campaignId: number) {
+export function getSchedules() {
+  return request<ScheduleListApiResponse[]>(
+    "/schedules/",
+    {},
+    "Unable to load schedules. Please try again."
+  );
+}
+
+export function createSchedule(data: CreateSchedulePayload) {
   return request<ScheduleApiResponse>(
-    `/schedules/generate/${campaignId}`,
+    "/schedules/",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+    "Unable to create the schedule. Please try again."
+  );
+}
+
+export function updateSchedule(
+  scheduleId: number,
+  data: Partial<CreateSchedulePayload>
+) {
+  return request<ScheduleApiResponse>(
+    `/schedules/${scheduleId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+    "Unable to update the schedule. Please try again."
+  );
+}
+
+export function generateSchedule(scheduleId: number) {
+  return request<ScheduleBoardApiResponse>(
+    `/schedules/generate/${scheduleId}`,
     { method: "POST" },
     "Unable to generate the schedule. Please try again."
   );
 }
 
-export function getSchedule(campaignId: number) {
-  return request<ScheduleApiResponse>(
-    `/schedules/${campaignId}`,
+export function getScheduleBoard(scheduleId: number) {
+  return request<ScheduleBoardApiResponse>(
+    `/schedules/${scheduleId}`,
     {},
     "Unable to load the schedule. Please try again."
   );
 }
 
+export function createAssignment(
+  scheduleId: number,
+  data: { shift_id: number; technician_id: number; category_id?: number | null }
+) {
+  return request<AssignmentApiResponse>(
+    `/schedules/${scheduleId}/assignments`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+    "Unable to assign this technician. Please try again."
+  );
+}
+
 export function editAssignment(
   assignmentId: number,
-  technicianId: number
+  data: {
+    technician_id?: number;
+    category_id?: number | null;
+    clear_category?: boolean;
+  }
 ) {
   return request<AssignmentApiResponse>(
     `/schedules/assignments/${assignmentId}`,
     {
       method: "PATCH",
-      body: JSON.stringify({ technician_id: technicianId }),
+      body: JSON.stringify(data),
     },
-    "Unable to reassign this shift. Please try again."
+    "Unable to update this assignment. Please try again."
   );
 }
 
-export function publishSchedule(campaignId: number) {
-  return request<ScheduleApiResponse>(
-    `/schedules/publish/${campaignId}`,
+export function publishSchedule(scheduleId: number) {
+  return request<ScheduleBoardApiResponse>(
+    `/schedules/publish/${scheduleId}`,
     { method: "POST" },
     "Unable to publish the schedule. Please try again."
   );

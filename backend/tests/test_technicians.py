@@ -23,6 +23,7 @@ from app.models import assignment  # noqa: F401
 from app.models import availability  # noqa: F401
 from app.models import collection_campaign  # noqa: F401
 from app.models import location  # noqa: F401
+from app.models import notification  # noqa: F401
 from app.models import schedule  # noqa: F401
 from app.models import schedule_category  # noqa: F401
 from app.models import shift  # noqa: F401

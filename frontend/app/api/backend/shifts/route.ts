@@ -3,12 +3,12 @@ import { NextRequest } from "next/server";
 import { proxyToBackend } from "@/lib/backendProxy";
 
 export async function GET(request: NextRequest) {
-  const campaignId = request.nextUrl.searchParams.get(
-    "campaign_id"
+  const scheduleId = request.nextUrl.searchParams.get(
+    "schedule_id"
   );
 
-  const query = campaignId
-    ? `?campaign_id=${encodeURIComponent(campaignId)}`
+  const query = scheduleId
+    ? `?schedule_id=${encodeURIComponent(scheduleId)}`
     : "";
 
   return proxyToBackend(request, `/shifts/${query}`, {
