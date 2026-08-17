@@ -38,3 +38,16 @@ class CollectionCampaignSubmissionSummary(BaseModel):
     unique_technicians_submitted: int
     total_technicians: int
     total_availability_blocks: int
+
+
+class TechnicianSubmissionStatus(BaseModel):
+    technician_id: int
+    technician_name: str
+    submitted: bool
+    submitted_at: datetime | None = None
+
+
+class CollectionCampaignRosterResponse(BaseModel):
+    campaign_id: int
+    submitted: list[TechnicianSubmissionStatus]
+    pending: list[TechnicianSubmissionStatus]

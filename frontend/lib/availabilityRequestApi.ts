@@ -1,5 +1,40 @@
 const API_URL = "/api/backend";
 
+type BackendErrorBody = {
+  detail?:
+    | string
+    | Array<{
+        loc?: Array<string | number>;
+        msg?: string;
+        type?: string;
+      }>;
+};
+
+function getErrorMessage(
+  errorBody: BackendErrorBody | null,
+  fallbackMessage: string
+) {
+  if (!errorBody?.detail) {
+    return fallbackMessage;
+  }
+
+  if (typeof errorBody.detail === "string") {
+    return errorBody.detail;
+  }
+
+  if (Array.isArray(errorBody.detail)) {
+    const messages = errorBody.detail
+      .map((item) => item.msg)
+      .filter((message): message is string => Boolean(message));
+
+    if (messages.length > 0) {
+      return messages.join(" ");
+    }
+  }
+
+  return fallbackMessage;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {}
@@ -13,11 +48,19 @@ async function request<T>(
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
+    let errorBody: BackendErrorBody | null = null;
+
+    try {
+      errorBody = (await response.json()) as BackendErrorBody;
+    } catch {
+      errorBody = null;
+    }
 
     throw new Error(
-      errorText ||
+      getErrorMessage(
+        errorBody,
         `Request failed with status ${response.status}`
+      )
     );
   }
 
@@ -58,6 +101,19 @@ export type SubmissionSummaryResponse = {
   total_availability_blocks: number;
 };
 
+export type TechnicianSubmissionStatus = {
+  technician_id: number;
+  technician_name: string;
+  submitted: boolean;
+  submitted_at: string | null;
+};
+
+export type SubmissionRosterResponse = {
+  campaign_id: number;
+  submitted: TechnicianSubmissionStatus[];
+  pending: TechnicianSubmissionStatus[];
+};
+
 export function getAvailabilityRequests() {
   return request<AvailabilityRequestApiResponse[]>(
     "/collection-campaigns/"
@@ -91,5 +147,17 @@ export function getAvailabilitySubmissionSummary(
 ) {
   return request<SubmissionSummaryResponse>(
     `/collection-campaigns/${campaignId}/submission-summary`
+  );
+}
+
+export function deleteAvailabilityRequest(campaignId: number) {
+  return request<null>(`/collection-campaigns/${campaignId}`, {
+    method: "DELETE",
+  });
+}
+
+export function getAvailabilityRequestRoster(campaignId: number) {
+  return request<SubmissionRosterResponse>(
+    `/collection-campaigns/${campaignId}/roster`
   );
 }

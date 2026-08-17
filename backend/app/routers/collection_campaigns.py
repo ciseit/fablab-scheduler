@@ -7,6 +7,7 @@ from app.schemas.collection_campaign import (
     CollectionCampaignCreate,
     CollectionCampaignListResponse,
     CollectionCampaignResponse,
+    CollectionCampaignRosterResponse,
     CollectionCampaignSubmissionSummary,
 )
 from app.services import collection_campaign_service
@@ -43,6 +44,24 @@ def get_collection_campaign_submission_summary(
     return (
         collection_campaign_service
         .get_collection_campaign_submission_summary(
+            db=db,
+            campaign_id=campaign_id,
+        )
+    )
+
+
+@router.get(
+    "/{campaign_id}/roster",
+    response_model=CollectionCampaignRosterResponse,
+    dependencies=[Depends(get_current_admin)],
+)
+def get_collection_campaign_roster(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+):
+    return (
+        collection_campaign_service
+        .get_collection_campaign_roster(
             db=db,
             campaign_id=campaign_id,
         )
@@ -98,4 +117,19 @@ def create_collection_campaign(
             db,
             campaign_data,
         )
+    )
+
+
+@router.delete(
+    "/{campaign_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(get_current_admin)],
+)
+def delete_collection_campaign(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+):
+    collection_campaign_service.delete_collection_campaign(
+        db=db,
+        campaign_id=campaign_id,
     )

@@ -4,8 +4,10 @@ from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.models.assignment import Assignment
 from app.models.availability import Availability
 from app.models.collection_campaign import CollectionCampaign
+from app.models.shift import Shift
 from app.models.technician import Technician
 from app.schemas.collection_campaign import CollectionCampaignCreate
 
@@ -149,6 +151,67 @@ def get_collection_campaign_submission_summary(
     }
 
 
+def get_collection_campaign_roster(
+    db: Session,
+    campaign_id: int,
+) -> dict:
+    campaign = (
+        db.query(CollectionCampaign)
+        .filter(CollectionCampaign.id == campaign_id)
+        .first()
+    )
+
+    if campaign is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Availability Request not found",
+        )
+
+    submitted_at_by_technician = dict(
+        db.query(
+            Availability.technician_id,
+            func.min(Availability.created_at),
+        )
+        .filter(Availability.campaign_id == campaign_id)
+        .group_by(Availability.technician_id)
+        .all()
+    )
+
+    active_technicians = (
+        db.query(Technician)
+        .filter(Technician.status == "active")
+        .order_by(Technician.name)
+        .all()
+    )
+
+    submitted = []
+    pending = []
+
+    for technician in active_technicians:
+        submitted_at = submitted_at_by_technician.get(technician.id)
+
+        entry = {
+            "technician_id": technician.id,
+            "technician_name": technician.name,
+            "submitted": submitted_at is not None,
+            "submitted_at": submitted_at,
+        }
+
+        if submitted_at is not None:
+            submitted.append(entry)
+        else:
+            pending.append(entry)
+
+    submitted.sort(key=lambda entry: entry["technician_name"].lower())
+    pending.sort(key=lambda entry: entry["technician_name"].lower())
+
+    return {
+        "campaign_id": campaign_id,
+        "submitted": submitted,
+        "pending": pending,
+    }
+
+
 def get_collection_campaign_by_public_token(
     db: Session,
     public_token: str,
@@ -181,3 +244,72 @@ def create_collection_campaign(
     db.refresh(new_campaign)
 
     return new_campaign
+
+
+def delete_collection_campaign(
+    db: Session,
+    campaign_id: int,
+) -> None:
+    campaign = (
+        db.query(CollectionCampaign)
+        .filter(CollectionCampaign.id == campaign_id)
+        .first()
+    )
+
+    if campaign is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Availability Request not found",
+        )
+
+    submission_count = (
+        db.query(func.count(func.distinct(Availability.technician_id)))
+        .filter(Availability.campaign_id == campaign_id)
+        .scalar()
+    ) or 0
+
+    shift_count = (
+        db.query(func.count(Shift.id))
+        .filter(Shift.campaign_id == campaign_id)
+        .scalar()
+    ) or 0
+
+    assignment_count = (
+        db.query(func.count(Assignment.id))
+        .filter(Assignment.campaign_id == campaign_id)
+        .scalar()
+    ) or 0
+
+    if submission_count > 0 or shift_count > 0 or assignment_count > 0:
+        blockers = []
+
+        if submission_count > 0:
+            blockers.append(
+                f"{submission_count} technician "
+                f"{'submission' if submission_count == 1 else 'submissions'}"
+            )
+
+        if shift_count > 0:
+            blockers.append(
+                f"{shift_count} {'shift' if shift_count == 1 else 'shifts'}"
+            )
+
+        if assignment_count > 0:
+            blockers.append(
+                f"{assignment_count} schedule "
+                f"{'assignment' if assignment_count == 1 else 'assignments'}"
+            )
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This availability request can't be deleted because it "
+                "already has " + ", ".join(blockers) + ". Deleting it "
+                "would permanently erase that data. Remove the related "
+                "submissions, shifts, and schedule assignments first if "
+                "you really need to delete this request."
+            ),
+        )
+
+    db.delete(campaign)
+    db.commit()

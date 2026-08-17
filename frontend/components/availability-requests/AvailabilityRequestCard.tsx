@@ -8,6 +8,7 @@ import {
   Copy,
   ExternalLink,
   MoreHorizontal,
+  Trash2,
   Users,
 } from "lucide-react";
 
@@ -28,7 +29,10 @@ type AvailabilityRequestCardProps = {
   request: AvailabilityRequest;
   onCopyLink: (request: AvailabilityRequest) => void;
   onOpenPublicForm: (request: AvailabilityRequest) => void;
+  onDelete: (request: AvailabilityRequest) => void;
+  onViewSubmissions: (request: AvailabilityRequest) => void;
   copied?: boolean;
+  deleting?: boolean;
 };
 
 function formatDate(dateValue: string) {
@@ -69,7 +73,10 @@ export default function AvailabilityRequestCard({
   request,
   onCopyLink,
   onOpenPublicForm,
+  onDelete,
+  onViewSubmissions,
   copied = false,
+  deleting = false,
 }: AvailabilityRequestCardProps) {
   const submittedCount = request.submitted_count ?? 0;
   const totalTechnicians = request.total_technicians ?? 0;
@@ -140,9 +147,14 @@ export default function AvailabilityRequestCard({
               <Users size={16} />
 
               {totalTechnicians > 0 ? (
-                <span>
-                  {submittedCount} of {totalTechnicians} submitted
-                </span>
+                <button
+                  type="button"
+                  onClick={() => onViewSubmissions(request)}
+                  className="underline decoration-dotted underline-offset-2 transition hover:text-neutral-950"
+                >
+                  {submittedCount} of {totalTechnicians} submitted —
+                  see who
+                </button>
               ) : (
                 <span>Submission tracking pending</span>
               )}
@@ -181,12 +193,12 @@ export default function AvailabilityRequestCard({
 
             <button
               type="button"
-              disabled
-              title="A delete endpoint has not been implemented yet."
-              className="flex w-full cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-neutral-400"
+              onClick={() => onDelete(request)}
+              disabled={deleting}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Delete request
-              <span className="ml-auto text-xs">Pending API</span>
+              <Trash2 size={16} />
+              {deleting ? "Deleting..." : "Delete request"}
             </button>
           </div>
         </details>

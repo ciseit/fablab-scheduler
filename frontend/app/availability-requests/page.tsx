@@ -10,9 +10,11 @@ import AvailabilityRequestCard, {
 import CreateAvailabilityRequestDialog, {
   type AvailabilityRequestFormData,
 } from "@/components/availability-requests/CreateAvailabilityRequestDialog";
+import SubmissionRosterDialog from "@/components/availability-requests/SubmissionRosterDialog";
 
 import {
   createAvailabilityRequest,
+  deleteAvailabilityRequest,
   getAvailabilityRequests,
 } from "@/lib/availabilityRequestApi";
 
@@ -27,6 +29,12 @@ export default function AvailabilityRequestsPage() {
 
   const [copiedRequestId, setCopiedRequestId] =
     useState<number | null>(null);
+
+  const [deletingRequestId, setDeletingRequestId] =
+    useState<number | null>(null);
+
+  const [rosterRequest, setRosterRequest] =
+    useState<AvailabilityRequest | null>(null);
 
   async function loadRequests() {
     setLoading(true);
@@ -150,6 +158,49 @@ export default function AvailabilityRequestsPage() {
     );
   }
 
+  async function handleDeleteRequest(
+    request: AvailabilityRequest
+  ) {
+    const confirmed = window.confirm(
+      `Delete "${request.name}"? This cannot be undone. If technicians ` +
+        `have already submitted availability, or shifts or a schedule ` +
+        `have been created for this request, deletion will be blocked ` +
+        `to protect that data.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    setDeletingRequestId(request.id);
+
+    try {
+      await deleteAvailabilityRequest(request.id);
+
+      setRequests((current) =>
+        current.filter(
+          (existingRequest) => existingRequest.id !== request.id
+        )
+      );
+
+      showSuccess("Availability request deleted.");
+    } catch (deleteError) {
+      console.error(
+        "Failed to delete availability request:",
+        deleteError
+      );
+
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Unable to delete this availability request."
+      );
+    } finally {
+      setDeletingRequestId(null);
+    }
+  }
+
   return (
     <AppLayout>
       <div className="space-y-8">
@@ -208,7 +259,10 @@ export default function AvailabilityRequestsPage() {
                 request={request}
                 onCopyLink={handleCopyLink}
                 onOpenPublicForm={handleOpenPublicForm}
+                onDelete={handleDeleteRequest}
+                onViewSubmissions={setRosterRequest}
                 copied={copiedRequestId === request.id}
+                deleting={deletingRequestId === request.id}
               />
             ))}
           </div>
@@ -218,6 +272,13 @@ export default function AvailabilityRequestsPage() {
           open={dialogOpen}
           onClose={() => setDialogOpen(false)}
           onSave={handleCreateRequest}
+        />
+
+        <SubmissionRosterDialog
+          open={rosterRequest !== null}
+          requestId={rosterRequest?.id ?? null}
+          requestName={rosterRequest?.name}
+          onClose={() => setRosterRequest(null)}
         />
       </div>
     </AppLayout>
