@@ -10,6 +10,7 @@ from app.schemas.availability import (
     AvailabilityUpdate,
     PublicAvailabilitySubmission,
 )
+from app.services import notification_service
 
 
 def create_availability(
@@ -133,6 +134,10 @@ def create_public_availability_submission(
     )
 
     if existing_submission is not None and not submission.replace_existing:
+        notification_service.notify_duplicate_submission(
+            db, campaign, technician.name, technician.id
+        )
+
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -197,6 +202,10 @@ def create_public_availability_submission(
 
         for availability in new_availabilities:
             db.refresh(availability)
+
+        notification_service.notify_availability_submitted(
+            db, campaign, technician.name, technician.id
+        )
 
         return new_availabilities
 

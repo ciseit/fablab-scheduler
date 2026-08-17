@@ -4,6 +4,8 @@ import { ChevronDown, LogOut, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import NotificationBell from "./NotificationBell";
+
 export default function Header() {
   const router = useRouter();
 
@@ -87,6 +89,8 @@ export default function Header() {
 
       {/* Header actions */}
       <div className="flex items-center gap-4">
+        <NotificationBell />
+
         {/* New menu */}
         <div ref={newMenuRef} className="relative">
           <button
