@@ -52,7 +52,7 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
         <div className="mb-8">
-          <p className="text-sm font-medium text-gray-500">
+          <p className="text-sm font-medium text-gray-700">
             FABLAB Scheduler
           </p>
 
@@ -60,7 +60,7 @@ export default function LoginPage() {
             Administrator Login
           </h1>
 
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="mt-2 text-sm text-gray-800">
             Sign in to manage technicians, availability requests, and schedules.
           </p>
         </div>
@@ -69,7 +69,7 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="email"
-              className="mb-2 block text-sm font-medium text-gray-700"
+              className="mb-2 block text-sm font-medium text-gray-900"
             >
               Email
             </label>
@@ -82,14 +82,14 @@ export default function LoginPage() {
               required
               autoComplete="email"
               placeholder="you@csudh.edu"
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-black"
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-900 outline-none placeholder:text-gray-400 focus:border-black"
             />
           </div>
 
           <div>
             <label
               htmlFor="password"
-              className="mb-2 block text-sm font-medium text-gray-700"
+              className="mb-2 block text-sm font-medium text-gray-900"
             >
               Password
             </label>
@@ -102,7 +102,7 @@ export default function LoginPage() {
               required
               autoComplete="current-password"
               placeholder="Enter your password"
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-black"
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-900 outline-none placeholder:text-gray-400 focus:border-black"
             />
           </div>
 
