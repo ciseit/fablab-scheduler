@@ -9,6 +9,7 @@ from app.schemas.collection_campaign import (
     CollectionCampaignResponse,
     CollectionCampaignRosterResponse,
     CollectionCampaignSubmissionSummary,
+    CollectionCampaignUpdate,
 )
 from app.services import collection_campaign_service
 
@@ -116,6 +117,26 @@ def create_collection_campaign(
         .create_collection_campaign(
             db,
             campaign_data,
+        )
+    )
+
+
+@router.patch(
+    "/{campaign_id}",
+    response_model=CollectionCampaignResponse,
+    dependencies=[Depends(get_current_admin)],
+)
+def update_collection_campaign(
+    campaign_id: int,
+    campaign_data: CollectionCampaignUpdate,
+    db: Session = Depends(get_db),
+):
+    return (
+        collection_campaign_service
+        .update_collection_campaign(
+            db=db,
+            campaign_id=campaign_id,
+            campaign_data=campaign_data,
         )
     )
 

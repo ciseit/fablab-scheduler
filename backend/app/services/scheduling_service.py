@@ -13,6 +13,7 @@ from app.models.schedule_category import ScheduleCategory
 from app.models.shift import Shift
 from app.models.technician import Technician
 from app.schemas.assignment import AssignmentCreate, AssignmentUpdate
+from app.services.schedule_service import require_draft_schedule
 
 
 DAY_ORDER = {
@@ -210,6 +211,7 @@ def generate_schedule(
     schedule_id: int,
 ) -> dict:
     schedule = _get_schedule_or_404(db, schedule_id)
+    require_draft_schedule(schedule)
 
     shifts = (
         db.query(Shift)
@@ -523,6 +525,7 @@ def create_assignment(
     data: AssignmentCreate,
 ) -> Assignment:
     schedule = _get_schedule_or_404(db, schedule_id)
+    require_draft_schedule(schedule)
 
     shift = (
         db.query(Shift)
@@ -611,6 +614,7 @@ def edit_assignment(
         )
 
     schedule = _get_schedule_or_404(db, assignment.schedule_id)
+    require_draft_schedule(schedule)
 
     shift = (
         db.query(Shift)
@@ -659,6 +663,26 @@ def edit_assignment(
     return assignment
 
 
+def delete_assignment(db: Session, assignment_id: int) -> None:
+    assignment = (
+        db.query(Assignment)
+        .filter(Assignment.id == assignment_id)
+        .first()
+    )
+
+    if assignment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assignment not found",
+        )
+
+    schedule = _get_schedule_or_404(db, assignment.schedule_id)
+    require_draft_schedule(schedule)
+
+    db.delete(assignment)
+    db.commit()
+
+
 def _generate_unique_schedule_token(db: Session) -> str:
     while True:
         token = secrets.token_urlsafe(12)
@@ -695,6 +719,35 @@ def publish_schedule(
             ),
         )
 
+    # Republishing a working copy created via "Edit Published Schedule":
+    # hand this copy the original's public identity (same link keeps
+    # working) and retire the original as superseded history, instead of
+    # minting a fresh, unrelated public link.
+    if schedule.editing_source_id is not None:
+        original = (
+            db.query(Schedule)
+            .filter(Schedule.id == schedule.editing_source_id)
+            .first()
+        )
+
+        if original is not None and original.status == "published":
+            token = original.public_token
+
+            original.public_token = None
+            original.status = "superseded"
+            # Flush the token-clearing update first so the unique
+            # constraint on public_token is never briefly violated by
+            # two rows holding the same value.
+            db.flush()
+
+            schedule.public_token = token
+            schedule.published_at = datetime.now(timezone.utc)
+            schedule.status = "published"
+
+            db.commit()
+
+            return get_schedule_board(db, schedule_id)
+
     if schedule.public_token is None:
         schedule.public_token = _generate_unique_schedule_token(db)
 
@@ -704,6 +757,95 @@ def publish_schedule(
     db.commit()
 
     return get_schedule_board(db, schedule_id)
+
+
+def start_editing_published_schedule(
+    db: Session,
+    schedule_id: int,
+) -> Schedule:
+    original = _get_schedule_or_404(db, schedule_id)
+
+    if original.status != "published":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Only a currently published schedule can be edited this "
+                "way."
+            ),
+        )
+
+    existing_draft = (
+        db.query(Schedule)
+        .filter(
+            Schedule.editing_source_id == original.id,
+            Schedule.status == "draft",
+        )
+        .first()
+    )
+
+    if existing_draft is not None:
+        return existing_draft
+
+    clone = Schedule(
+        name=f"{original.name} (Editing)",
+        start_date=original.start_date,
+        end_date=original.end_date,
+        semester=original.semester,
+        notes=original.notes,
+        minimum_weekly_hours=original.minimum_weekly_hours,
+        campaign_id=original.campaign_id,
+        status="draft",
+        editing_source_id=original.id,
+    )
+
+    db.add(clone)
+    db.flush()
+
+    shift_id_map: dict[int, int] = {}
+
+    original_shifts = (
+        db.query(Shift).filter(Shift.schedule_id == original.id).all()
+    )
+
+    for shift in original_shifts:
+        new_shift = Shift(
+            schedule_id=clone.id,
+            location_id=shift.location_id,
+            day_of_week=shift.day_of_week,
+            start_time=shift.start_time,
+            end_time=shift.end_time,
+            required_technicians=shift.required_technicians,
+        )
+        db.add(new_shift)
+        db.flush()
+        shift_id_map[shift.id] = new_shift.id
+
+    original_assignments = (
+        db.query(Assignment)
+        .filter(Assignment.schedule_id == original.id)
+        .all()
+    )
+
+    for assignment in original_assignments:
+        new_shift_id = shift_id_map.get(assignment.shift_id)
+
+        if new_shift_id is None:
+            continue
+
+        db.add(
+            Assignment(
+                schedule_id=clone.id,
+                shift_id=new_shift_id,
+                technician_id=assignment.technician_id,
+                status=assignment.status,
+                category_id=assignment.category_id,
+            )
+        )
+
+    db.commit()
+    db.refresh(clone)
+
+    return clone
 
 
 def get_public_schedule(

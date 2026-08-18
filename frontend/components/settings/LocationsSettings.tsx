@@ -25,7 +25,7 @@ export default function LocationsSettings() {
     setError("");
 
     try {
-      const data = await getLocations();
+      const data = await getLocations(true);
       setLocations(data);
     } catch (loadError) {
       console.error("Failed to load locations:", loadError);

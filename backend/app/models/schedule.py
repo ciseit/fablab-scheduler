@@ -45,6 +45,19 @@ class Schedule(Base):
         index=True,
     )
 
+    # Set only on a schedule created via "Edit Published Schedule": points
+    # back at the published schedule it's a working copy of. Diana edits
+    # this draft freely; the original stays untouched and public until
+    # she republishes, at which point the original's status flips to
+    # "superseded" and its public_token moves to this row. Null for every
+    # ordinary schedule (standalone or campaign-linked).
+    editing_source_id = Column(
+        Integer,
+        ForeignKey("schedules.id"),
+        nullable=True,
+        index=True,
+    )
+
     created_at = Column(
         DateTime,
         server_default=func.now(),

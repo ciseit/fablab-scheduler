@@ -133,7 +133,7 @@ def _refresh_deadline_notifications(db: Session) -> None:
         missing = max(total_active - submitted_count, 0)
 
         is_approaching = (
-            campaign.status != "closed"
+            campaign.status not in ("closed", "archived")
             and now <= closes_at <= now + DEADLINE_WARNING_WINDOW
             and missing > 0
         )
@@ -248,5 +248,28 @@ def mark_notification_read(db: Session, notification_id: int) -> Notification | 
 def mark_all_read(db: Session) -> None:
     db.query(Notification).filter(Notification.is_read.is_(False)).update(
         {"is_read": True}
+    )
+    db.commit()
+
+
+def dismiss_notification(db: Session, notification_id: int) -> bool:
+    notification = (
+        db.query(Notification)
+        .filter(Notification.id == notification_id)
+        .first()
+    )
+
+    if notification is None:
+        return False
+
+    db.delete(notification)
+    db.commit()
+
+    return True
+
+
+def clear_read_notifications(db: Session) -> None:
+    db.query(Notification).filter(Notification.is_read.is_(True)).delete(
+        synchronize_session=False
     )
     db.commit()

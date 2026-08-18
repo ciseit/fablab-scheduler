@@ -56,3 +56,30 @@ def mark_all_notifications_read(
     db: Session = Depends(get_db),
 ):
     notification_service.mark_all_read(db)
+
+
+@router.delete(
+    "/{notification_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def dismiss_notification(
+    notification_id: int,
+    db: Session = Depends(get_db),
+):
+    found = notification_service.dismiss_notification(db, notification_id)
+
+    if not found:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Notification not found",
+        )
+
+
+@router.post(
+    "/clear-read",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def clear_read_notifications(
+    db: Session = Depends(get_db),
+):
+    notification_service.clear_read_notifications(db)

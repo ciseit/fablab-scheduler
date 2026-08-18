@@ -1,10 +1,12 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.models.assignment import Assignment
 from app.models.location import Location
 from app.models.schedule import Schedule
 from app.models.shift import Shift
 from app.schemas.shift import ShiftCreate
+from app.services.schedule_service import require_draft_schedule
 
 
 def create_shift(
@@ -23,6 +25,8 @@ def create_shift(
             detail="Schedule not found",
         )
 
+    require_draft_schedule(schedule)
+
     if shift_data.location_id is not None:
         location = (
             db.query(Location)
@@ -34,6 +38,15 @@ def create_shift(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Location not found",
+            )
+
+        if not location.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f'The "{location.name}" location has been archived '
+                    "and can't be used for new shifts."
+                ),
             )
 
     shift = Shift(
@@ -81,3 +94,20 @@ def get_shift_by_id(
         )
 
     return shift
+
+
+def delete_shift(db: Session, shift_id: int) -> None:
+    shift = get_shift_by_id(db, shift_id)
+
+    schedule = (
+        db.query(Schedule).filter(Schedule.id == shift.schedule_id).first()
+    )
+
+    if schedule is not None:
+        require_draft_schedule(schedule)
+
+    db.query(Assignment).filter(Assignment.shift_id == shift_id).delete(
+        synchronize_session=False
+    )
+    db.delete(shift)
+    db.commit()

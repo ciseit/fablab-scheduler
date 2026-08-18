@@ -41,9 +41,9 @@ export type ScheduleCategoryApiResponse = {
   is_active: boolean;
 };
 
-export function getScheduleCategories() {
+export function getScheduleCategories(includeInactive = false) {
   return request<ScheduleCategoryApiResponse[]>(
-    "/schedule-categories/",
+    `/schedule-categories/${includeInactive ? "?include_inactive=true" : ""}`,
     {},
     "Unable to load categories."
   );

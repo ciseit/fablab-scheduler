@@ -39,3 +39,18 @@ export async function PATCH(
     }
   );
 }
+
+export async function DELETE(
+  request: NextRequest,
+  context: RouteContext
+) {
+  const { scheduleId } = await context.params;
+
+  return proxyToBackend(
+    request,
+    `/schedules/${scheduleId}`,
+    {
+      method: "DELETE",
+    }
+  );
+}

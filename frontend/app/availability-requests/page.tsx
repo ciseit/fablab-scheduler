@@ -13,9 +13,12 @@ import CreateAvailabilityRequestDialog, {
 import SubmissionRosterDialog from "@/components/availability-requests/SubmissionRosterDialog";
 
 import {
+  ApiError,
+  archiveAvailabilityRequest,
   createAvailabilityRequest,
   deleteAvailabilityRequest,
   getAvailabilityRequests,
+  updateAvailabilityRequest,
 } from "@/lib/availabilityRequestApi";
 
 export default function AvailabilityRequestsPage() {
@@ -25,6 +28,7 @@ export default function AvailabilityRequestsPage() {
   const [successMessage, setSuccessMessage] = useState("");
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const [copiedRequestId, setCopiedRequestId] =
@@ -33,8 +37,23 @@ export default function AvailabilityRequestsPage() {
   const [deletingRequestId, setDeletingRequestId] =
     useState<number | null>(null);
 
+  const [archivingRequestId, setArchivingRequestId] =
+    useState<number | null>(null);
+
   const [rosterRequest, setRosterRequest] =
     useState<AvailabilityRequest | null>(null);
+
+  const [editingRequest, setEditingRequest] =
+    useState<AvailabilityRequest | null>(null);
+
+  // Set when a delete attempt is blocked by the backend (409 -- the
+  // request has submissions/schedules) so we can show a friendly,
+  // in-app explanation with an Archive fallback instead of letting the
+  // error bubble up as an uncaught exception.
+  const [blockedDeleteRequest, setBlockedDeleteRequest] = useState<{
+    request: AvailabilityRequest;
+    message: string;
+  } | null>(null);
 
   async function loadRequests() {
     setLoading(true);
@@ -66,13 +85,17 @@ export default function AvailabilityRequestsPage() {
   }, []);
 
   const filteredRequests = useMemo(() => {
+    const visibleRequests = showArchived
+      ? requests
+      : requests.filter((request) => request.status !== "archived");
+
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
     if (!normalizedSearch) {
-      return requests;
+      return visibleRequests;
     }
 
-    return requests.filter((request) =>
+    return visibleRequests.filter((request) =>
       [
         request.name,
         request.semester ?? "",
@@ -83,7 +106,7 @@ export default function AvailabilityRequestsPage() {
         value.toLowerCase().includes(normalizedSearch)
       )
     );
-  }, [requests, searchTerm]);
+  }, [requests, searchTerm, showArchived]);
 
   function showSuccess(message: string) {
     setSuccessMessage(message);
@@ -112,6 +135,32 @@ export default function AvailabilityRequestsPage() {
       );
 
       throw createError;
+    }
+  }
+
+  async function handleUpdateRequest(
+    data: AvailabilityRequestFormData
+  ) {
+    if (!editingRequest) {
+      return;
+    }
+
+    setError("");
+
+    try {
+      await updateAvailabilityRequest(editingRequest.id, data);
+
+      setEditingRequest(null);
+      showSuccess("Availability request updated.");
+
+      await loadRequests();
+    } catch (updateError) {
+      console.error(
+        "Failed to update availability request:",
+        updateError
+      );
+
+      throw updateError;
     }
   }
 
@@ -173,6 +222,7 @@ export default function AvailabilityRequestsPage() {
     }
 
     setError("");
+    setBlockedDeleteRequest(null);
     setDeletingRequestId(request.id);
 
     try {
@@ -191,13 +241,71 @@ export default function AvailabilityRequestsPage() {
         deleteError
       );
 
-      setError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "Unable to delete this availability request."
-      );
+      // A 409 means the backend is correctly protecting technician
+      // submissions or linked schedules -- that's expected, recoverable
+      // state, not a crash. Show a friendly explanation with an Archive
+      // fallback instead of the generic error banner.
+      if (
+        deleteError instanceof ApiError &&
+        deleteError.status === 409
+      ) {
+        setBlockedDeleteRequest({
+          request,
+          message: deleteError.message,
+        });
+      } else {
+        setError(
+          deleteError instanceof Error
+            ? deleteError.message
+            : "Unable to delete this availability request."
+        );
+      }
     } finally {
       setDeletingRequestId(null);
+    }
+  }
+
+  async function handleArchiveRequest(
+    request: AvailabilityRequest
+  ) {
+    setError("");
+    setArchivingRequestId(request.id);
+
+    try {
+      const updated =
+        (await archiveAvailabilityRequest(
+          request.id
+        )) as AvailabilityRequest;
+
+      setRequests((current) =>
+        current.map((existingRequest) =>
+          existingRequest.id === request.id
+            ? { ...existingRequest, ...updated }
+            : existingRequest
+        )
+      );
+
+      setBlockedDeleteRequest((current) =>
+        current?.request.id === request.id ? null : current
+      );
+
+      showSuccess(
+        `"${request.name}" archived. Its submissions and schedules ` +
+          `are preserved.`
+      );
+    } catch (archiveError) {
+      console.error(
+        "Failed to archive availability request:",
+        archiveError
+      );
+
+      setError(
+        archiveError instanceof Error
+          ? archiveError.message
+          : "Unable to archive this availability request."
+      );
+    } finally {
+      setArchivingRequestId(null);
     }
   }
 
@@ -223,6 +331,8 @@ export default function AvailabilityRequestsPage() {
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
           onCreateRequest={() => setDialogOpen(true)}
+          showArchived={showArchived}
+          onShowArchivedChange={setShowArchived}
         />
 
         {successMessage && (
@@ -234,6 +344,43 @@ export default function AvailabilityRequestsPage() {
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {error}
+          </div>
+        )}
+
+        {blockedDeleteRequest && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            <p className="font-medium">
+              &ldquo;{blockedDeleteRequest.request.name}&rdquo; can&apos;t
+              be deleted yet.
+            </p>
+
+            <p className="mt-1">{blockedDeleteRequest.message}</p>
+
+            <div className="mt-3 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  handleArchiveRequest(blockedDeleteRequest.request)
+                }
+                disabled={
+                  archivingRequestId ===
+                  blockedDeleteRequest.request.id
+                }
+                className="rounded-lg bg-amber-800 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-amber-900 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {archivingRequestId === blockedDeleteRequest.request.id
+                  ? "Archiving..."
+                  : "Archive instead"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBlockedDeleteRequest(null)}
+                className="rounded-lg border border-amber-300 px-3 py-1.5 text-sm font-medium text-amber-800 transition hover:bg-amber-100"
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         )}
 
@@ -259,10 +406,13 @@ export default function AvailabilityRequestsPage() {
                 request={request}
                 onCopyLink={handleCopyLink}
                 onOpenPublicForm={handleOpenPublicForm}
+                onEdit={setEditingRequest}
                 onDelete={handleDeleteRequest}
+                onArchive={handleArchiveRequest}
                 onViewSubmissions={setRosterRequest}
                 copied={copiedRequestId === request.id}
                 deleting={deletingRequestId === request.id}
+                archiving={archivingRequestId === request.id}
               />
             ))}
           </div>
@@ -272,6 +422,24 @@ export default function AvailabilityRequestsPage() {
           open={dialogOpen}
           onClose={() => setDialogOpen(false)}
           onSave={handleCreateRequest}
+        />
+
+        <CreateAvailabilityRequestDialog
+          open={editingRequest !== null}
+          onClose={() => setEditingRequest(null)}
+          onSave={handleUpdateRequest}
+          initialData={
+            editingRequest
+              ? {
+                  name: editingRequest.name,
+                  semester: editingRequest.semester ?? "",
+                  opens_at: editingRequest.opens_at,
+                  closes_at: editingRequest.closes_at,
+                  minimum_weekly_hours:
+                    editingRequest.minimum_weekly_hours ?? 15,
+                }
+              : null
+          }
         />
 
         <SubmissionRosterDialog

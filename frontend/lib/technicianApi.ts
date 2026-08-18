@@ -10,6 +10,16 @@ type BackendErrorBody = {
       }>;
 };
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 function getErrorMessage(
   errorBody: BackendErrorBody | null,
   fallbackMessage: string
@@ -53,11 +63,12 @@ async function request(path: string, options: RequestInit = {}) {
       errorBody = null;
     }
 
-    throw new Error(
+    throw new ApiError(
       getErrorMessage(
         errorBody,
         `Request failed with status ${response.status}`
-      )
+      ),
+      response.status
     );
   }
 

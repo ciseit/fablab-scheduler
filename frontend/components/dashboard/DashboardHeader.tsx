@@ -34,7 +34,12 @@ export default function DashboardHeader({
           {greeting}
         </h1>
 
-        <p className="mt-4 max-w-2xl text-lg text-gray-600">
+        <p className="mt-3 max-w-2xl text-sm font-medium text-gray-500">
+          Your daily overview of technicians, requests, and
+          today&rsquo;s schedule.
+        </p>
+
+        <p className="mt-2 max-w-2xl text-lg text-gray-600">
           {loading
             ? "Loading technician and request data..."
             : `You have ${activeTechnicians} active ${

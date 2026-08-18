@@ -8,7 +8,10 @@ from app.models.availability import Availability
 from app.models.collection_campaign import CollectionCampaign
 from app.models.schedule import Schedule
 from app.models.technician import Technician
-from app.schemas.collection_campaign import CollectionCampaignCreate
+from app.schemas.collection_campaign import (
+    CollectionCampaignCreate,
+    CollectionCampaignUpdate,
+)
 
 
 def generate_unique_public_token(db: Session) -> str:
@@ -93,6 +96,8 @@ def get_collection_campaigns(
                 ),
                 "public_token": campaign.public_token,
                 "status": campaign.status,
+                "is_accepting_submissions": campaign.is_accepting_submissions,
+                "has_opened": campaign.has_opened,
                 "submitted_count": counts["submitted_count"],
                 "total_technicians": total_active_technicians,
                 "total_availability_blocks": counts[
@@ -245,6 +250,52 @@ def create_collection_campaign(
     return new_campaign
 
 
+def get_collection_campaign_or_404(
+    db: Session,
+    campaign_id: int,
+) -> CollectionCampaign:
+    campaign = (
+        db.query(CollectionCampaign)
+        .filter(CollectionCampaign.id == campaign_id)
+        .first()
+    )
+
+    if campaign is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Availability Request not found",
+        )
+
+    return campaign
+
+
+def update_collection_campaign(
+    db: Session,
+    campaign_id: int,
+    campaign_data: CollectionCampaignUpdate,
+) -> CollectionCampaign:
+    campaign = get_collection_campaign_or_404(db, campaign_id)
+
+    update_data = campaign_data.model_dump(exclude_unset=True)
+
+    new_opens_at = update_data.get("opens_at", campaign.opens_at)
+    new_closes_at = update_data.get("closes_at", campaign.closes_at)
+
+    if new_closes_at <= new_opens_at:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Closing time must be later than opening time.",
+        )
+
+    for field, value in update_data.items():
+        setattr(campaign, field, value)
+
+    db.commit()
+    db.refresh(campaign)
+
+    return campaign
+
+
 def delete_collection_campaign(
     db: Session,
     campaign_id: int,
@@ -291,12 +342,11 @@ def delete_collection_campaign(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "This availability request can't be deleted because it "
-                "already has " + ", ".join(blockers) + ". Deleting it "
-                "would permanently erase that data. Remove the related "
-                "submissions first, and unlink or delete any schedules "
-                "built from this request, if you really need to delete "
-                "it."
+                "This availability request already has "
+                + ", ".join(blockers)
+                + ", so it can't be permanently deleted. Archive it "
+                "instead — its submissions and schedule history stay "
+                "intact."
             ),
         )
 

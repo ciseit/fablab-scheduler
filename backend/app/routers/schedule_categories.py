@@ -22,9 +22,12 @@ router = APIRouter(
     response_model=list[ScheduleCategoryResponse],
 )
 def get_schedule_categories(
+    include_inactive: bool = False,
     db: Session = Depends(get_db),
 ):
-    return schedule_category_service.get_categories(db)
+    return schedule_category_service.get_categories(
+        db, include_inactive=include_inactive
+    )
 
 
 @router.post(

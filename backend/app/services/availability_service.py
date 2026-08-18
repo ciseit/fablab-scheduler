@@ -108,6 +108,25 @@ def create_public_availability_submission(
             detail="Availability Request not found",
         )
 
+    if not campaign.has_opened:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This availability request is not open yet. Check back "
+                "after it opens."
+            ),
+        )
+
+    if not campaign.is_accepting_submissions:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This availability request has closed and is no longer "
+                "accepting submissions. Contact the administrator if you "
+                "need to submit late availability."
+            ),
+        )
+
     normalized_email = str(submission.email).strip().lower()
 
     technician = (

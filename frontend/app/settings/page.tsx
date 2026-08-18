@@ -107,11 +107,12 @@ export default function SettingsPage() {
           </p>
 
           <h1 className="mt-2 text-4xl font-semibold">
-            Account Settings
+            Settings
           </h1>
 
           <p className="mt-3 text-neutral-600">
-            Manage your administrator profile.
+            Manage your administrator profile, locations, and
+            schedule labels.
           </p>
         </section>
 

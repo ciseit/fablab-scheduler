@@ -22,9 +22,12 @@ router = APIRouter(
     response_model=list[LocationResponse],
 )
 def get_locations(
+    include_inactive: bool = False,
     db: Session = Depends(get_db),
 ):
-    return location_service.get_locations(db)
+    return location_service.get_locations(
+        db, include_inactive=include_inactive
+    )
 
 
 @router.post(

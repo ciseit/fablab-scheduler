@@ -113,3 +113,11 @@ export function createShift(data: ShiftCreatePayload) {
     "Unable to create the shift. Please try again."
   );
 }
+
+export function deleteShift(shiftId: number) {
+  return request<null>(
+    `/shifts/${shiftId}`,
+    { method: "DELETE" },
+    "Unable to delete this shift. Please try again."
+  );
+}

@@ -10,6 +10,16 @@ type BackendErrorBody = {
       }>;
 };
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 function getErrorMessage(
   errorBody: BackendErrorBody | null,
   fallbackMessage: string
@@ -56,11 +66,12 @@ async function request<T>(
       errorBody = null;
     }
 
-    throw new Error(
+    throw new ApiError(
       getErrorMessage(
         errorBody,
         `Request failed with status ${response.status}`
-      )
+      ),
+      response.status
     );
   }
 
@@ -80,6 +91,8 @@ export type AvailabilityRequestApiResponse = {
   minimum_weekly_hours: number;
   public_token: string;
   status: string;
+  is_accepting_submissions: boolean;
+  has_opened: boolean;
 
   submitted_count?: number;
   total_technicians?: number;
@@ -92,6 +105,12 @@ export type CreateAvailabilityRequestPayload = {
   opens_at: string;
   closes_at: string;
   minimum_weekly_hours: number;
+};
+
+export type UpdateAvailabilityRequestPayload = Partial<
+  CreateAvailabilityRequestPayload
+> & {
+  status?: string;
 };
 
 export type SubmissionSummaryResponse = {
@@ -150,9 +169,30 @@ export function getAvailabilitySubmissionSummary(
   );
 }
 
+export function updateAvailabilityRequest(
+  campaignId: number,
+  data: UpdateAvailabilityRequestPayload
+) {
+  return request<AvailabilityRequestApiResponse>(
+    `/collection-campaigns/${campaignId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
 export function deleteAvailabilityRequest(campaignId: number) {
   return request<null>(`/collection-campaigns/${campaignId}`, {
     method: "DELETE",
+  });
+}
+
+// Archiving preserves the request (and the submissions/schedules that
+// block a hard delete) while taking it out of the active list.
+export function archiveAvailabilityRequest(campaignId: number) {
+  return updateAvailabilityRequest(campaignId, {
+    status: "archived",
   });
 }
 

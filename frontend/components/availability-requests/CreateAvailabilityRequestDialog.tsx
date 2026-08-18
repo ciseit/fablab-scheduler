@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
+import {
+  localInputValueToUtcIso,
+  utcIsoToLocalInputValue,
+} from "@/lib/datetimeUtils";
 
 export type AvailabilityRequestFormData = {
   name: string;
@@ -15,6 +19,10 @@ type CreateAvailabilityRequestDialogProps = {
   open: boolean;
   onClose: () => void;
   onSave: (data: AvailabilityRequestFormData) => Promise<void>;
+  /** When provided, the dialog edits an existing request instead of
+   * creating a new one -- Diana can extend/change dates, rename it, or
+   * adjust the minimum hours after creation. */
+  initialData?: AvailabilityRequestFormData | null;
 };
 
 const initialFormData: AvailabilityRequestFormData = {
@@ -29,7 +37,10 @@ export default function CreateAvailabilityRequestDialog({
   open,
   onClose,
   onSave,
+  initialData = null,
 }: CreateAvailabilityRequestDialogProps) {
+  const isEditing = initialData !== null;
+
   const [formData, setFormData] =
     useState<AvailabilityRequestFormData>(initialFormData);
 
@@ -38,11 +49,19 @@ export default function CreateAvailabilityRequestDialog({
 
   useEffect(() => {
     if (open) {
-      setFormData(initialFormData);
+      setFormData(
+        initialData
+          ? {
+              ...initialData,
+              opens_at: utcIsoToLocalInputValue(initialData.opens_at),
+              closes_at: utcIsoToLocalInputValue(initialData.closes_at),
+            }
+          : initialFormData
+      );
       setError("");
       setSaving(false);
     }
-  }, [open]);
+  }, [open, initialData]);
 
   if (!open) {
     return null;
@@ -89,7 +108,11 @@ export default function CreateAvailabilityRequestDialog({
 
     try {
       setSaving(true);
-      await onSave(formData);
+      await onSave({
+        ...formData,
+        opens_at: localInputValueToUtcIso(formData.opens_at),
+        closes_at: localInputValueToUtcIso(formData.closes_at),
+      });
     } catch (saveError) {
       console.error(
         "Failed to create availability request:",
@@ -99,7 +122,9 @@ export default function CreateAvailabilityRequestDialog({
       setError(
         saveError instanceof Error
           ? saveError.message
-          : "Failed to create availability request."
+          : isEditing
+            ? "Failed to update availability request."
+            : "Failed to create availability request."
       );
     } finally {
       setSaving(false);
@@ -112,11 +137,15 @@ export default function CreateAvailabilityRequestDialog({
         <div className="flex items-start justify-between border-b border-neutral-200 px-6 py-5">
           <div>
             <h2 className="text-xl font-semibold text-neutral-950">
-              Create Availability Request
+              {isEditing
+                ? "Edit Availability Request"
+                : "Create Availability Request"}
             </h2>
 
             <p className="mt-1 text-sm text-neutral-500">
-              Set the collection window and minimum weekly hours.
+              {isEditing
+                ? "Change the name, collection window, or minimum weekly hours -- extending the closing date immediately reopens submissions."
+                : "Set the collection window and minimum weekly hours."}
             </p>
           </div>
 
@@ -264,7 +293,13 @@ export default function CreateAvailabilityRequestDialog({
               disabled={saving}
               className="rounded-xl bg-black px-5 py-3 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {saving ? "Creating..." : "Create Request"}
+              {saving
+                ? isEditing
+                  ? "Saving..."
+                  : "Creating..."
+                : isEditing
+                  ? "Save Changes"
+                  : "Create Request"}
             </button>
           </div>
         </form>

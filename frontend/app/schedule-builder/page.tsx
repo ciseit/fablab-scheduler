@@ -8,10 +8,13 @@ import {
   Copy,
   ExternalLink,
   Filter,
+  Lock,
+  Pencil,
   Plus,
   RefreshCw,
   Send,
   Sparkles,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -29,6 +32,7 @@ import {
 } from "@/lib/availabilityRequestApi";
 import {
   createShift,
+  deleteShift,
   getShifts,
   type ShiftApiResponse,
   type ShiftDay,
@@ -36,11 +40,14 @@ import {
 import {
   createAssignment,
   createSchedule,
+  deleteSchedule,
   editAssignment,
   generateSchedule,
   getScheduleBoard,
   getSchedules,
   publishSchedule,
+  startEditingPublishedSchedule,
+  unassign,
   type CreateSchedulePayload,
   type ScheduleBoardApiResponse,
   type ScheduleListApiResponse,
@@ -117,6 +124,10 @@ export default function ScheduleBuilderPage() {
   const [selectedScheduleId, setSelectedScheduleId] = useState<
     number | null
   >(null);
+  // Old superseded copies (left behind by "Edit Published Schedule")
+  // are history, not something Diana needs to pick from day to day --
+  // hidden from the dropdown by default.
+  const [showHistory, setShowHistory] = useState(false);
 
   const [availabilityRequests, setAvailabilityRequests] = useState<
     AvailabilityRequestApiResponse[]
@@ -137,6 +148,14 @@ export default function ScheduleBuilderPage() {
   const [generating, setGenerating] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [deletingSchedule, setDeletingSchedule] = useState(false);
+  const [startingEdit, setStartingEdit] = useState(false);
+  const [deletingShiftId, setDeletingShiftId] = useState<number | null>(
+    null
+  );
+  const [unassigningId, setUnassigningId] = useState<number | null>(
+    null
+  );
 
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -206,7 +225,11 @@ export default function ScheduleBuilderPage() {
         : null;
 
       const preselected =
-        preselectedById ?? preselectedByCampaign ?? scheduleData[0] ?? null;
+        preselectedById ??
+        preselectedByCampaign ??
+        scheduleData.find((candidate) => candidate.status !== "superseded") ??
+        scheduleData[0] ??
+        null;
 
       if (preselected) {
         setSelectedScheduleId(preselected.id);
@@ -489,6 +512,31 @@ export default function ScheduleBuilderPage() {
     [schedules, selectedScheduleId]
   );
 
+  // The dropdown defaults to active schedules only; superseded copies
+  // only show up with "Show history" on (or if one happens to already
+  // be selected, so switching the toggle off never blanks the picker).
+  const visibleSchedules = useMemo(() => {
+    if (showHistory) {
+      return schedules;
+    }
+
+    return schedules.filter(
+      (schedule) =>
+        schedule.status !== "superseded" ||
+        schedule.id === selectedScheduleId
+    );
+  }, [schedules, showHistory, selectedScheduleId]);
+
+  // Only a "draft" schedule (a brand-new one, or a working copy created
+  // via "Edit Published Schedule") can be changed directly. "published"
+  // and "superseded" schedules are read-only here -- the backend
+  // enforces this too, this just keeps the UI from offering actions
+  // that would just come back as an error.
+  const isDraftSchedule = selectedSchedule?.status === "draft";
+  const isPublishedSchedule = selectedSchedule?.status === "published";
+  const isSupersededSchedule = selectedSchedule?.status === "superseded";
+  const isEditingCopy = selectedSchedule?.editing_source_id != null;
+
   async function handleCreateSchedule(data: CreateSchedulePayload) {
     try {
       const created = await createSchedule(data);
@@ -566,6 +614,144 @@ export default function ScheduleBuilderPage() {
       );
     } finally {
       setPublishing(false);
+    }
+  }
+
+  async function handleDeleteSchedule() {
+    if (selectedScheduleId === null || !selectedSchedule) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete "${selectedSchedule.name}"? This also removes its shifts ` +
+        `and assignments. This cannot be undone.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingSchedule(true);
+    setError("");
+
+    try {
+      await deleteSchedule(selectedScheduleId);
+      showSuccess("Schedule deleted.");
+
+      const updatedSchedules = await getSchedules();
+      setSchedules(updatedSchedules);
+      setSelectedScheduleId(
+        updatedSchedules.length > 0 ? updatedSchedules[0].id : null
+      );
+    } catch (deleteError) {
+      console.error("Failed to delete schedule:", deleteError);
+
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Unable to delete this schedule."
+      );
+    } finally {
+      setDeletingSchedule(false);
+    }
+  }
+
+  async function handleStartEditingPublished() {
+    if (selectedScheduleId === null) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "This creates an editable copy of the published schedule. The " +
+        "public schedule will keep showing exactly what's live now, " +
+        "unchanged, until you publish your changes from the copy. " +
+        "Continue?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setStartingEdit(true);
+    setError("");
+
+    try {
+      const clone = await startEditingPublishedSchedule(selectedScheduleId);
+      showSuccess("Editable copy created.");
+
+      const updatedSchedules = await getSchedules();
+      setSchedules(updatedSchedules);
+      setSelectedScheduleId(clone.id);
+    } catch (startError) {
+      console.error(
+        "Failed to start editing published schedule:",
+        startError
+      );
+
+      setError(
+        startError instanceof Error
+          ? startError.message
+          : "Unable to start editing this schedule."
+      );
+    } finally {
+      setStartingEdit(false);
+    }
+  }
+
+  async function handleDeleteShift(shiftId: number) {
+    const confirmed = window.confirm(
+      "Delete this shift? Any technician assigned to it will be " +
+        "unassigned. This cannot be undone."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingShiftId(shiftId);
+    setError("");
+
+    try {
+      await deleteShift(shiftId);
+      showSuccess("Shift deleted.");
+
+      if (selectedScheduleId !== null) {
+        await loadScheduleData(selectedScheduleId);
+      }
+    } catch (deleteError) {
+      console.error("Failed to delete shift:", deleteError);
+
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Unable to delete this shift."
+      );
+    } finally {
+      setDeletingShiftId(null);
+    }
+  }
+
+  async function handleUnassign(assignmentId: number) {
+    setUnassigningId(assignmentId);
+    setError("");
+
+    try {
+      await unassign(assignmentId);
+      showSuccess("Technician unassigned.");
+
+      if (selectedScheduleId !== null) {
+        await loadScheduleData(selectedScheduleId);
+      }
+    } catch (unassignError) {
+      console.error("Failed to unassign:", unassignError);
+
+      setError(
+        unassignError instanceof Error
+          ? unassignError.message
+          : "Unable to unassign this technician."
+      );
+    } finally {
+      setUnassigningId(null);
     }
   }
 
@@ -782,29 +968,46 @@ export default function ScheduleBuilderPage() {
           </div>
 
           <div className="flex flex-wrap items-start gap-3">
-            <select
-              value={selectedScheduleId ?? ""}
-              onChange={(event) =>
-                setSelectedScheduleId(
-                  event.target.value ? Number(event.target.value) : null
-                )
-              }
-              disabled={loadingSchedules || schedules.length === 0}
-              className="h-12 rounded-xl border border-neutral-200 bg-white px-4 text-sm font-medium text-neutral-700 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100"
-            >
-              {schedules.length === 0 && (
-                <option value="">No schedules yet</option>
-              )}
+            <div className="flex flex-col gap-1.5">
+              <select
+                value={selectedScheduleId ?? ""}
+                onChange={(event) =>
+                  setSelectedScheduleId(
+                    event.target.value ? Number(event.target.value) : null
+                  )
+                }
+                disabled={loadingSchedules || visibleSchedules.length === 0}
+                className="h-12 rounded-xl border border-neutral-200 bg-white px-4 text-sm font-medium text-neutral-700 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100"
+              >
+                {visibleSchedules.length === 0 && (
+                  <option value="">
+                    {showHistory ? "No schedules yet" : "No active schedules"}
+                  </option>
+                )}
 
-              {schedules.map((schedule) => (
-                <option key={schedule.id} value={schedule.id}>
-                  {schedule.name}
-                  {schedule.campaign_name
-                    ? ` (${schedule.campaign_name})`
-                    : " (manual)"}
-                </option>
-              ))}
-            </select>
+                {visibleSchedules.map((schedule) => (
+                  <option key={schedule.id} value={schedule.id}>
+                    {schedule.name}
+                    {schedule.campaign_name
+                      ? ` (${schedule.campaign_name})`
+                      : " (manual)"}
+                    {schedule.status === "superseded" ? " — history" : ""}
+                  </option>
+                ))}
+              </select>
+
+              {schedules.some((schedule) => schedule.status === "superseded") && (
+                <label className="flex items-center gap-1.5 pl-1 text-xs font-medium text-neutral-500">
+                  <input
+                    type="checkbox"
+                    checked={showHistory}
+                    onChange={(event) => setShowHistory(event.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-neutral-300"
+                  />
+                  Show history
+                </label>
+              )}
+            </div>
 
             <button
               type="button"
@@ -831,43 +1034,115 @@ export default function ScheduleBuilderPage() {
               Refresh
             </button>
 
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={
-                selectedScheduleId === null || generating || !hasShifts
-              }
-              title={
-                !hasShifts
-                  ? "This schedule has no shifts to generate yet."
-                  : !selectedSchedule?.campaign_id
-                    ? "No availability request is linked, so nothing will be auto-assigned. Assign technicians manually below instead."
-                    : undefined
-              }
-              className="flex items-center gap-2 rounded-xl bg-black px-5 py-3 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
-            >
-              <Sparkles size={17} />
-              {generating ? "Generating..." : "Generate Schedule"}
-            </button>
+            {isPublishedSchedule && (
+              <button
+                type="button"
+                onClick={handleStartEditingPublished}
+                disabled={selectedScheduleId === null || startingEdit}
+                title="Creates an editable copy. The public schedule stays unchanged until you publish your changes."
+                className="flex items-center gap-2 rounded-xl bg-black px-5 py-3 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+              >
+                <Pencil size={17} />
+                {startingEdit
+                  ? "Creating copy..."
+                  : "Edit Published Schedule"}
+              </button>
+            )}
 
-            <button
-              type="button"
-              onClick={handlePublish}
-              disabled={
-                selectedScheduleId === null || publishing || !hasAssignments
-              }
-              title={
-                !hasAssignments
-                  ? "Assign at least one shift before publishing."
-                  : undefined
-              }
-              className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-5 py-3 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Send size={17} />
-              {publishing ? "Publishing..." : "Publish Schedule"}
-            </button>
+            {!isPublishedSchedule && !isSupersededSchedule && (
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={
+                  selectedScheduleId === null || generating || !hasShifts
+                }
+                title={
+                  !hasShifts
+                    ? "This schedule has no shifts to generate yet."
+                    : !selectedSchedule?.campaign_id
+                      ? "No availability request is linked, so nothing will be auto-assigned. Assign technicians manually below instead."
+                      : undefined
+                }
+                className="flex items-center gap-2 rounded-xl bg-black px-5 py-3 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+              >
+                <Sparkles size={17} />
+                {generating ? "Generating..." : "Generate Schedule"}
+              </button>
+            )}
+
+            {!isPublishedSchedule && !isSupersededSchedule && (
+              <button
+                type="button"
+                onClick={handlePublish}
+                disabled={
+                  selectedScheduleId === null ||
+                  publishing ||
+                  !hasAssignments
+                }
+                title={
+                  !hasAssignments
+                    ? "Assign at least one shift before publishing."
+                    : undefined
+                }
+                className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-5 py-3 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send size={17} />
+                {publishing
+                  ? "Publishing..."
+                  : isEditingCopy
+                    ? "Publish Changes"
+                    : "Publish Schedule"}
+              </button>
+            )}
+
+            {!isPublishedSchedule && !isSupersededSchedule && (
+              <button
+                type="button"
+                onClick={handleDeleteSchedule}
+                disabled={selectedScheduleId === null || deletingSchedule}
+                className="flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Trash2 size={17} />
+                {deletingSchedule ? "Deleting..." : "Delete Schedule"}
+              </button>
+            )}
           </div>
         </section>
+
+        {isPublishedSchedule && (
+          <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <Lock size={17} className="mt-0.5 shrink-0" />
+            <p>
+              This schedule is published and live. It&rsquo;s protected
+              from direct changes. Click &ldquo;Edit Published
+              Schedule&rdquo; to make changes safely — the public
+              schedule keeps showing exactly what&rsquo;s live now until
+              you publish your edits.
+            </p>
+          </div>
+        )}
+
+        {isSupersededSchedule && (
+          <div className="flex items-start gap-3 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+            <Lock size={17} className="mt-0.5 shrink-0" />
+            <p>
+              This is a past version of a schedule that has since been
+              updated and republished. It&rsquo;s kept for reference only
+              and can no longer be changed.
+            </p>
+          </div>
+        )}
+
+        {isEditingCopy && isDraftSchedule && (
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <Pencil size={17} className="mt-0.5 shrink-0" />
+            <p>
+              You&rsquo;re editing a copy of a published schedule. The
+              live public schedule is unaffected by your changes here
+              until you click &ldquo;Publish Changes.&rdquo;
+            </p>
+          </div>
+        )}
 
         {successMessage && (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
@@ -1067,7 +1342,7 @@ export default function ScheduleBuilderPage() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 px-6 py-5">
             <div>
               <h2 className="text-lg font-semibold text-neutral-950">
-                Coverage Shifts
+                Shifts
               </h2>
 
               <p className="mt-1 text-sm text-neutral-500">
@@ -1079,7 +1354,12 @@ export default function ScheduleBuilderPage() {
             <button
               type="button"
               onClick={() => setShiftDialogOpen(true)}
-              disabled={selectedScheduleId === null}
+              disabled={selectedScheduleId === null || !isDraftSchedule}
+              title={
+                !isDraftSchedule
+                  ? "This schedule is protected. Use Edit Published Schedule to make changes."
+                  : undefined
+              }
               className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Plus size={17} />
@@ -1112,9 +1392,10 @@ export default function ScheduleBuilderPage() {
                       "Location",
                       "Required Technicians",
                       "Hours",
-                    ].map((heading) => (
+                      "",
+                    ].map((heading, index) => (
                       <th
-                        key={heading}
+                        key={heading || `col-${index}`}
                         className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500"
                       >
                         {heading}
@@ -1164,6 +1445,25 @@ export default function ScheduleBuilderPage() {
                           {shiftHours(shift.start_time, shift.end_time)}{" "}
                           hrs
                         </td>
+
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteShift(shift.id)}
+                            disabled={
+                              !isDraftSchedule ||
+                              deletingShiftId === shift.id
+                            }
+                            title={
+                              !isDraftSchedule
+                                ? "This schedule is protected. Use Edit Published Schedule to make changes."
+                                : "Delete this shift"
+                            }
+                            className="rounded-lg p-2 text-neutral-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-neutral-400"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -1182,7 +1482,7 @@ export default function ScheduleBuilderPage() {
 
               <div className="flex-1">
                 <h2 className="text-lg font-semibold text-neutral-950">
-                  Uncovered shifts
+                  Uncovered Shifts
                 </h2>
 
                 <p className="mt-1 text-sm text-neutral-600">
@@ -1268,7 +1568,13 @@ export default function ScheduleBuilderPage() {
                           onClick={() =>
                             setAssigningShiftId(uncovered.shift_id)
                           }
-                          className="mt-3 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-700 transition hover:bg-neutral-50"
+                          disabled={!isDraftSchedule}
+                          title={
+                            !isDraftSchedule
+                              ? "This schedule is protected. Use Edit Published Schedule to make changes."
+                              : undefined
+                          }
+                          className="mt-3 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           + Assign technician
                         </button>
@@ -1431,7 +1737,8 @@ export default function ScheduleBuilderPage() {
                                       )
                                     }
                                     disabled={
-                                      reassigningId === assignment.id
+                                      reassigningId === assignment.id ||
+                                      !isDraftSchedule
                                     }
                                     className={
                                       belowMinimumIds.has(
@@ -1478,7 +1785,10 @@ export default function ScheduleBuilderPage() {
                                         : ""
                                     )
                                   }
-                                  disabled={reassigningId === assignment.id}
+                                  disabled={
+                                    reassigningId === assignment.id ||
+                                    !isDraftSchedule
+                                  }
                                   className="h-10 w-full max-w-[10rem] rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-900 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed"
                                 >
                                   <option value="">No status</option>
@@ -1493,12 +1803,33 @@ export default function ScheduleBuilderPage() {
                                 </select>
                               </td>
 
-                              <td className="px-6 py-4 text-right text-sm text-neutral-500">
+                              <td className="px-6 py-4 text-sm text-neutral-500">
                                 {shiftHours(
                                   shift.start_time,
                                   shift.end_time
                                 )}{" "}
                                 hrs
+                              </td>
+
+                              <td className="px-6 py-4 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleUnassign(assignment.id)
+                                  }
+                                  disabled={
+                                    !isDraftSchedule ||
+                                    unassigningId === assignment.id
+                                  }
+                                  title={
+                                    !isDraftSchedule
+                                      ? "This schedule is protected. Use Edit Published Schedule to make changes."
+                                      : "Remove technician from shift"
+                                  }
+                                  className="rounded-lg p-2 text-neutral-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-neutral-400"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
                               </td>
                             </tr>
                           )

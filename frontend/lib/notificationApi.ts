@@ -72,3 +72,19 @@ export function markAllNotificationsRead() {
     "Unable to update notifications."
   );
 }
+
+export function dismissNotification(notificationId: number) {
+  return request<null>(
+    `/notifications/${notificationId}`,
+    { method: "DELETE" },
+    "Unable to dismiss this notification."
+  );
+}
+
+export function clearReadNotifications() {
+  return request<null>(
+    "/notifications/clear-read",
+    { method: "POST" },
+    "Unable to clear read notifications."
+  );
+}

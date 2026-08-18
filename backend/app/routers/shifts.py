@@ -46,3 +46,14 @@ def get_shift(
     db: Session = Depends(get_db),
 ):
     return shift_service.get_shift_by_id(db, shift_id)
+
+
+@router.delete(
+    "/{shift_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_shift(
+    shift_id: int,
+    db: Session = Depends(get_db),
+):
+    shift_service.delete_shift(db, shift_id)

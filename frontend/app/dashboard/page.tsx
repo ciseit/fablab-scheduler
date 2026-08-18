@@ -17,6 +17,7 @@ import RecentActivity from "@/components/dashboard/RecentActivity";
 import ActiveCampaigns, {
   type ActiveCampaignItem,
 } from "@/components/dashboard/ActiveCampaigns";
+import { parseBackendUtc } from "@/lib/datetimeUtils";
 
 import { getTechnicians } from "@/lib/technicianApi";
 import { getCurrentAdmin } from "@/lib/authApi";
@@ -70,10 +71,10 @@ function isRequestActive(
   }
 
   const now = Date.now();
-  const opensAt = new Date(
+  const opensAt = parseBackendUtc(
     request.opens_at
   ).getTime();
-  const closesAt = new Date(
+  const closesAt = parseBackendUtc(
     request.closes_at
   ).getTime();
 
@@ -346,7 +347,7 @@ export default function DashboardPage() {
         items.push({
           id: `submissions-${request.id}`,
           title: `${total - submitted} of ${total} technicians have not submitted availability`,
-          description: `${request.name} closes ${new Date(
+          description: `${request.name} closes ${parseBackendUtc(
             request.closes_at
           ).toLocaleDateString("en-US", {
             month: "long",
@@ -401,7 +402,7 @@ export default function DashboardPage() {
           submittedCount: request.submitted_count ?? 0,
           totalTechnicians:
             request.total_technicians ?? 0,
-          closesLabel: new Date(
+          closesLabel: parseBackendUtc(
             request.closes_at
           ).toLocaleDateString("en-US", {
             month: "long",

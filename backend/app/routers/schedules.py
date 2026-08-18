@@ -62,6 +62,34 @@ def update_schedule_endpoint(
     return schedule_service.update_schedule(db, schedule_id, schedule_data)
 
 
+@router.delete(
+    "/{schedule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(get_current_admin)],
+)
+def delete_schedule_endpoint(
+    schedule_id: int,
+    db: Session = Depends(get_db),
+):
+    schedule_service.delete_schedule(db, schedule_id)
+
+
+@router.post(
+    "/{schedule_id}/start-edit",
+    response_model=ScheduleResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_admin)],
+)
+def start_editing_published_schedule_endpoint(
+    schedule_id: int,
+    db: Session = Depends(get_db),
+):
+    return scheduling_service.start_editing_published_schedule(
+        db=db,
+        schedule_id=schedule_id,
+    )
+
+
 @router.post(
     "/generate/{schedule_id}",
     response_model=ScheduleBoardResponse,
@@ -155,3 +183,15 @@ def edit_assignment_endpoint(
         assignment_id=assignment_id,
         update=assignment_update,
     )
+
+
+@router.delete(
+    "/assignments/{assignment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(get_current_admin)],
+)
+def unassign_endpoint(
+    assignment_id: int,
+    db: Session = Depends(get_db),
+):
+    scheduling_service.delete_assignment(db=db, assignment_id=assignment_id)

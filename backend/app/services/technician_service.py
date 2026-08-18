@@ -1,4 +1,5 @@
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.assignment import Assignment
@@ -7,13 +8,17 @@ from app.models.technician import Technician
 from app.schemas.technician import TechnicianCreate, TechnicianUpdate
 
 
+def _lower_eq(column, value: str):
+    return func.lower(column) == value.strip().lower()
+
+
 def create_technician(
     db: Session,
     technician_data: TechnicianCreate,
 ):
     existing_technician = (
         db.query(Technician)
-        .filter(Technician.email == technician_data.email)
+        .filter(_lower_eq(Technician.email, technician_data.email))
         .first()
     )
 
@@ -68,7 +73,7 @@ def update_technician(
         email_owner = (
             db.query(Technician)
             .filter(
-                Technician.email == update_data["email"],
+                _lower_eq(Technician.email, update_data["email"]),
                 Technician.id != technician_id,
             )
             .first()

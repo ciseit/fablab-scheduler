@@ -22,3 +22,20 @@ export async function DELETE(
     }
   );
 }
+
+export async function PATCH(
+  request: NextRequest,
+  context: RouteContext
+) {
+  const { campaignId } = await context.params;
+  const body = await request.text();
+
+  return proxyToBackend(
+    request,
+    `/collection-campaigns/${campaignId}`,
+    {
+      method: "PATCH",
+      body,
+    }
+  );
+}

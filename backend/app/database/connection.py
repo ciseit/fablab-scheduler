@@ -75,6 +75,27 @@ def run_startup_migrations(db_engine=None) -> None:
 
     _migrate_shifts_and_assignments_to_schedules(inspector, db_engine)
     _seed_default_schedule_categories(db_engine)
+    _add_schedule_editing_source_column(db_engine)
+
+
+def _add_schedule_editing_source_column(db_engine) -> None:
+    inspector = inspect(db_engine)
+
+    if not inspector.has_table("schedules"):
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("schedules")
+    }
+
+    if "editing_source_id" not in existing_columns:
+        with db_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE schedules ADD COLUMN editing_source_id "
+                    "INTEGER REFERENCES schedules (id)"
+                )
+            )
 
 
 def _migrate_shifts_and_assignments_to_schedules(inspector, db_engine) -> None:

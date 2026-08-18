@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useRouter } from "next/navigation";
-import { Bell } from "lucide-react";
+import { Bell, X } from "lucide-react";
 
 import {
+  clearReadNotifications,
+  dismissNotification,
   getNotifications,
   markAllNotificationsRead,
   markNotificationRead,
@@ -150,6 +157,42 @@ export default function NotificationBell() {
     }
   }
 
+  async function handleDismiss(
+    event: ReactMouseEvent,
+    notification: NotificationApiResponse
+  ) {
+    event.stopPropagation();
+
+    try {
+      await dismissNotification(notification.id);
+
+      setNotifications((current) =>
+        current.filter((item) => item.id !== notification.id)
+      );
+      if (!notification.is_read) {
+        setUnreadCount((current) => Math.max(current - 1, 0));
+      }
+    } catch (dismissError) {
+      console.error("Failed to dismiss notification:", dismissError);
+    }
+  }
+
+  async function handleClearRead() {
+    try {
+      await clearReadNotifications();
+
+      setNotifications((current) =>
+        current.filter((item) => !item.is_read)
+      );
+    } catch (clearError) {
+      console.error("Failed to clear read notifications:", clearError);
+    }
+  }
+
+  const hasReadNotifications = notifications.some(
+    (notification) => notification.is_read
+  );
+
   return (
     <div ref={menuRef} className="relative">
       <button
@@ -178,15 +221,27 @@ export default function NotificationBell() {
               Notifications
             </p>
 
-            {unreadCount > 0 && (
-              <button
-                type="button"
-                onClick={handleMarkAllRead}
-                className="text-xs font-medium text-gray-600 transition hover:text-gray-900"
-              >
-                Mark all as read
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleMarkAllRead}
+                  className="text-xs font-medium text-gray-600 transition hover:text-gray-900"
+                >
+                  Mark all as read
+                </button>
+              )}
+
+              {hasReadNotifications && (
+                <button
+                  type="button"
+                  onClick={handleClearRead}
+                  className="text-xs font-medium text-gray-600 transition hover:text-gray-900"
+                >
+                  Clear all read
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="max-h-96 overflow-y-auto">
@@ -205,7 +260,12 @@ export default function NotificationBell() {
             ) : (
               <ul className="divide-y divide-gray-100">
                 {notifications.map((notification) => (
-                  <li key={notification.id}>
+                  <li
+                    key={notification.id}
+                    className={`group relative ${
+                      notification.is_read ? "" : "bg-blue-50/60"
+                    }`}
+                  >
                     <button
                       type="button"
                       onClick={() =>
@@ -213,8 +273,8 @@ export default function NotificationBell() {
                       }
                       className={
                         notification.is_read
-                          ? "block w-full px-4 py-3 text-left transition hover:bg-gray-50"
-                          : "block w-full bg-blue-50/60 px-4 py-3 text-left transition hover:bg-blue-50"
+                          ? "block w-full px-4 py-3 pr-9 text-left transition hover:bg-gray-50"
+                          : "block w-full px-4 py-3 pr-9 text-left transition hover:bg-blue-50"
                       }
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -237,6 +297,15 @@ export default function NotificationBell() {
                       <p className="mt-1.5 text-xs text-gray-400">
                         {formatTimestamp(notification.created_at)}
                       </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(event) => handleDismiss(event, notification)}
+                      aria-label={`Dismiss: ${notification.title}`}
+                      className="absolute right-2 top-3 flex h-6 w-6 items-center justify-center rounded-full text-gray-400 opacity-0 transition hover:bg-gray-200 hover:text-gray-700 group-hover:opacity-100 focus:opacity-100"
+                    >
+                      <X size={14} />
                     </button>
                   </li>
                 ))}

@@ -30,7 +30,7 @@ export default function ScheduleCategoriesSettings() {
     setError("");
 
     try {
-      const data = await getScheduleCategories();
+      const data = await getScheduleCategories(true);
       setCategories(data);
     } catch (loadError) {
       console.error("Failed to load categories:", loadError);

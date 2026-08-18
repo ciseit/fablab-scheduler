@@ -179,9 +179,13 @@ class CollectionCampaignTestCase(unittest.TestCase):
             f"/collection-campaigns/{campaign['id']}"
         )
         self.assertEqual(delete_response.status_code, 409)
-        self.assertIn(
-            "submission", delete_response.json()["detail"].lower()
-        )
+        detail = delete_response.json()["detail"].lower()
+        self.assertIn("submission", detail)
+        # The message must point Diana at the Archive fallback the UI
+        # already offers, not ask her to manually clean up data first.
+        self.assertIn("archive", detail)
+        self.assertNotIn("unlink", detail)
+        self.assertNotIn("remove the related", detail)
 
         # The request and the technician's submission must both survive.
         get_response = self.client.get(
@@ -203,6 +207,114 @@ class CollectionCampaignTestCase(unittest.TestCase):
         self.assertIn(
             "schedule", delete_response.json()["detail"].lower()
         )
+
+    # -- archive tests ---------------------------------------------------
+    #
+    # Archiving is the frontend's escape hatch when a delete is blocked by
+    # submissions/schedules: it reuses the existing CollectionCampaign
+    # status field (set to "archived") so the request drops out of the
+    # active list without touching any of the data that blocked deletion.
+
+    def test_archive_campaign_with_submissions_preserves_data(self):
+        campaign = self.create_campaign()
+        self.create_technician("Ava", "ava@example.com")
+
+        submit_response = self.submit_public_availability(
+            campaign["public_token"],
+            "ava@example.com",
+            [
+                {
+                    "day_of_week": "monday",
+                    "start_time": "09:00:00",
+                    "end_time": "12:00:00",
+                    "availability_type": "available",
+                }
+            ],
+        )
+        self.assertEqual(submit_response.status_code, 201, submit_response.text)
+
+        # Deletion is (still) blocked ...
+        delete_response = self.client.delete(
+            f"/collection-campaigns/{campaign['id']}"
+        )
+        self.assertEqual(delete_response.status_code, 409)
+
+        # ... but archiving succeeds and preserves the submission.
+        archive_response = self.client.patch(
+            f"/collection-campaigns/{campaign['id']}",
+            json={"status": "archived"},
+        )
+        self.assertEqual(archive_response.status_code, 200, archive_response.text)
+        self.assertEqual(archive_response.json()["status"], "archived")
+
+        summary = self.client.get(
+            f"/collection-campaigns/{campaign['id']}/submission-summary"
+        )
+        self.assertEqual(
+            summary.json()["unique_technicians_submitted"], 1
+        )
+
+    def test_archived_campaign_still_returned_by_list_with_archived_status(
+        self,
+    ):
+        # The backend list endpoint stays a complete source of truth; the
+        # frontend is responsible for filtering archived requests out of
+        # the "active" view.
+        campaign = self.create_campaign()
+
+        self.client.patch(
+            f"/collection-campaigns/{campaign['id']}",
+            json={"status": "archived"},
+        )
+
+        list_response = self.client.get("/collection-campaigns/")
+        self.assertEqual(list_response.status_code, 200)
+
+        statuses = {
+            entry["id"]: entry["status"] for entry in list_response.json()
+        }
+        self.assertEqual(statuses[campaign["id"]], "archived")
+
+    def test_archive_requires_admin(self):
+        campaign = self.create_campaign()
+
+        app.dependency_overrides.pop(get_current_admin, None)
+
+        response = self.client.patch(
+            f"/collection-campaigns/{campaign['id']}",
+            json={"status": "archived"},
+        )
+        self.assertIn(response.status_code, (401, 403))
+
+    def test_archived_campaign_excluded_from_deadline_notification(self):
+        from datetime import datetime, timedelta, timezone
+
+        campaign = self.create_campaign()
+        self.create_technician("Ava", "ava@example.com")
+
+        # Move the deadline into the warning window so an active request
+        # would trigger a "deadline approaching" notification.
+        soon = datetime.now(timezone.utc) + timedelta(hours=2)
+        closes_response = self.client.patch(
+            f"/collection-campaigns/{campaign['id']}",
+            json={"closes_at": soon.strftime("%Y-%m-%dT%H:%M:%S")},
+        )
+        self.assertEqual(closes_response.status_code, 200, closes_response.text)
+
+        archive_response = self.client.patch(
+            f"/collection-campaigns/{campaign['id']}",
+            json={"status": "archived"},
+        )
+        self.assertEqual(archive_response.status_code, 200, archive_response.text)
+
+        notifications_response = self.client.get("/notifications/")
+        self.assertEqual(notifications_response.status_code, 200)
+
+        notification_types = [
+            n["type"]
+            for n in notifications_response.json()["notifications"]
+        ]
+        self.assertNotIn("deadline_approaching", notification_types)
 
     # -- duplicate submission tests ------------------------------------
 

@@ -2,21 +2,26 @@
 
 import Link from "next/link";
 import {
+  Archive,
   CalendarDays,
   CheckCircle2,
   Clock3,
   Copy,
   ExternalLink,
   MoreHorizontal,
+  Pencil,
   Trash2,
   Users,
 } from "lucide-react";
+import { formatUtcForDisplay } from "@/lib/datetimeUtils";
 
 export type AvailabilityRequest = {
   id: number;
   name: string;
   semester?: string;
   status: string;
+  is_accepting_submissions: boolean;
+  has_opened: boolean;
   opens_at: string;
   closes_at: string;
   minimum_weekly_hours?: number;
@@ -29,54 +34,36 @@ type AvailabilityRequestCardProps = {
   request: AvailabilityRequest;
   onCopyLink: (request: AvailabilityRequest) => void;
   onOpenPublicForm: (request: AvailabilityRequest) => void;
+  onEdit: (request: AvailabilityRequest) => void;
   onDelete: (request: AvailabilityRequest) => void;
+  onArchive: (request: AvailabilityRequest) => void;
   onViewSubmissions: (request: AvailabilityRequest) => void;
   copied?: boolean;
   deleting?: boolean;
+  archiving?: boolean;
 };
 
 function formatDate(dateValue: string) {
-  if (!dateValue) {
-    return "Not specified";
-  }
-
-  const date = new Date(dateValue);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Invalid date";
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
+  return formatUtcForDisplay(dateValue, {
     month: "short",
     day: "numeric",
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(date);
-}
-
-function normalizeStatus(status: string) {
-  const normalizedStatus = status.trim().toLowerCase();
-
-  if (normalizedStatus === "open") {
-    return "Open";
-  }
-
-  if (normalizedStatus === "closed") {
-    return "Closed";
-  }
-
-  return "Draft";
+  });
 }
 
 export default function AvailabilityRequestCard({
   request,
   onCopyLink,
   onOpenPublicForm,
+  onEdit,
   onDelete,
+  onArchive,
   onViewSubmissions,
   copied = false,
   deleting = false,
+  archiving = false,
 }: AvailabilityRequestCardProps) {
   const submittedCount = request.submitted_count ?? 0;
   const totalTechnicians = request.total_technicians ?? 0;
@@ -96,12 +83,26 @@ export default function AvailabilityRequestCard({
     0
   );
 
-  const displayStatus = normalizeStatus(request.status);
+  const isArchived = request.status === "archived";
+
+  // Computed live from opens_at/closes_at (see is_accepting_submissions
+  // on the backend), not the request's raw `status` field -- that field
+  // is never actually transitioned by anything today except the
+  // explicit archive action, so it can't otherwise be trusted to
+  // reflect whether this request is still open.
+  const displayStatus = isArchived
+    ? "Archived"
+    : request.is_accepting_submissions
+      ? "Open"
+      : !request.has_opened
+        ? "Not Open Yet"
+        : "Closed";
 
   const statusClasses = {
-    Draft: "bg-neutral-100 text-neutral-700",
     Open: "bg-emerald-50 text-emerald-700",
+    "Not Open Yet": "bg-blue-50 text-blue-700",
     Closed: "bg-amber-50 text-amber-700",
+    Archived: "bg-neutral-100 text-neutral-600",
   };
 
   return (
@@ -188,6 +189,27 @@ export default function AvailabilityRequestCard({
               <Copy size={16} />
               Copy public link
             </button>
+
+            <button
+              type="button"
+              onClick={() => onEdit(request)}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-neutral-700 transition hover:bg-neutral-50"
+            >
+              <Pencil size={16} />
+              Edit request
+            </button>
+
+            {!isArchived && (
+              <button
+                type="button"
+                onClick={() => onArchive(request)}
+                disabled={archiving}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Archive size={16} />
+                {archiving ? "Archiving..." : "Archive request"}
+              </button>
+            )}
 
             <div className="my-1 border-t border-neutral-100" />
 

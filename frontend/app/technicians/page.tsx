@@ -10,6 +10,7 @@ import AddTechnicianDialog, {
 } from "@/components/technicians/AddTechnicianDialog";
 
 import {
+  ApiError,
   createTechnician,
   deleteTechnician,
   getTechnicians,
@@ -85,6 +86,16 @@ export default function TechniciansPage() {
     selectedTechnician,
     setSelectedTechnician,
   ] = useState<Technician | null>(null);
+
+  const [blockedDeleteTechnician, setBlockedDeleteTechnician] =
+    useState<{ technician: Technician; message: string } | null>(
+      null
+    );
+
+  const [
+    deactivatingTechnicianId,
+    setDeactivatingTechnicianId,
+  ] = useState<number | null>(null);
 
   async function loadTechnicians() {
     setLoading(true);
@@ -211,6 +222,7 @@ export default function TechniciansPage() {
     }
 
     setError("");
+    setBlockedDeleteTechnician(null);
     setDeletingTechnicianId(technician.id);
 
     try {
@@ -230,13 +242,70 @@ export default function TechniciansPage() {
         deleteError
       );
 
-      setError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "Failed to delete technician."
-      );
+      // A 409 means the backend is correctly protecting this
+      // technician's schedule/availability history -- that's expected,
+      // recoverable state, not a crash. Offer a one-click Deactivate
+      // fallback instead of the generic error banner.
+      if (
+        deleteError instanceof ApiError &&
+        deleteError.status === 409
+      ) {
+        setBlockedDeleteTechnician({
+          technician,
+          message: deleteError.message,
+        });
+      } else {
+        setError(
+          deleteError instanceof Error
+            ? deleteError.message
+            : "Failed to delete technician."
+        );
+      }
     } finally {
       setDeletingTechnicianId(null);
+    }
+  }
+
+  async function handleDeactivateTechnician(
+    technician: Technician
+  ) {
+    setError("");
+    setDeactivatingTechnicianId(technician.id);
+
+    try {
+      const updated = (await updateTechnician(technician.id, {
+        status: "inactive",
+      })) as ApiTechnician;
+
+      setTechnicians((currentTechnicians) =>
+        currentTechnicians.map((currentTechnician) =>
+          currentTechnician.id === technician.id
+            ? mapApiTechnician(updated)
+            : currentTechnician
+        )
+      );
+
+      setBlockedDeleteTechnician((current) =>
+        current?.technician.id === technician.id ? null : current
+      );
+
+      showSuccess(
+        `${technician.name} deactivated. They're removed from ` +
+          `future scheduling and their history is preserved.`
+      );
+    } catch (deactivateError) {
+      console.error(
+        "Failed to deactivate technician:",
+        deactivateError
+      );
+
+      setError(
+        deactivateError instanceof Error
+          ? deactivateError.message
+          : "Unable to deactivate this technician."
+      );
+    } finally {
+      setDeactivatingTechnicianId(null);
     }
   }
 
@@ -273,6 +342,48 @@ export default function TechniciansPage() {
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {error}
+          </div>
+        )}
+
+        {blockedDeleteTechnician && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            <p className="font-medium">
+              &ldquo;{blockedDeleteTechnician.technician.name}&rdquo;
+              can&apos;t be deleted yet.
+            </p>
+
+            <p className="mt-1">
+              {blockedDeleteTechnician.message}
+            </p>
+
+            <div className="mt-3 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  handleDeactivateTechnician(
+                    blockedDeleteTechnician.technician
+                  )
+                }
+                disabled={
+                  deactivatingTechnicianId ===
+                  blockedDeleteTechnician.technician.id
+                }
+                className="rounded-lg bg-amber-800 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-amber-900 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deactivatingTechnicianId ===
+                blockedDeleteTechnician.technician.id
+                  ? "Deactivating..."
+                  : "Deactivate Technician"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBlockedDeleteTechnician(null)}
+                className="rounded-lg border border-amber-300 px-3 py-1.5 text-sm font-medium text-amber-800 transition hover:bg-amber-100"
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         )}
 

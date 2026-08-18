@@ -40,9 +40,9 @@ export type LocationApiResponse = {
   is_active: boolean;
 };
 
-export function getLocations() {
+export function getLocations(includeInactive = false) {
   return request<LocationApiResponse[]>(
-    "/locations/",
+    `/locations/${includeInactive ? "?include_inactive=true" : ""}`,
     {},
     "Unable to load locations."
   );

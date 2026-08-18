@@ -39,6 +39,9 @@ class ScheduleResponse(BaseModel):
     status: str
     published_at: datetime | None
     public_token: str | None
+    # Set only on a working copy created via "Edit Published Schedule";
+    # points back at the published schedule it was cloned from.
+    editing_source_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

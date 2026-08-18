@@ -81,6 +81,9 @@ export type ScheduleApiResponse = {
   status: string;
   published_at: string | null;
   public_token: string | null;
+  // Set only on a working copy created via "Edit Published Schedule";
+  // points back at the published schedule it was cloned from.
+  editing_source_id: number | null;
 };
 
 export type ScheduleListApiResponse = ScheduleApiResponse & {
@@ -189,6 +192,30 @@ export function updateSchedule(
       body: JSON.stringify(data),
     },
     "Unable to update the schedule. Please try again."
+  );
+}
+
+export function deleteSchedule(scheduleId: number) {
+  return request<null>(
+    `/schedules/${scheduleId}`,
+    { method: "DELETE" },
+    "Unable to delete this schedule. Please try again."
+  );
+}
+
+export function startEditingPublishedSchedule(scheduleId: number) {
+  return request<ScheduleApiResponse>(
+    `/schedules/${scheduleId}/start-edit`,
+    { method: "POST" },
+    "Unable to start editing this published schedule. Please try again."
+  );
+}
+
+export function unassign(assignmentId: number) {
+  return request<null>(
+    `/schedules/assignments/${assignmentId}`,
+    { method: "DELETE" },
+    "Unable to unassign this technician. Please try again."
   );
 }
 

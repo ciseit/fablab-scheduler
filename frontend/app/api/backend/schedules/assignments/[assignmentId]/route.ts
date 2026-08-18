@@ -24,3 +24,18 @@ export async function PATCH(
     }
   );
 }
+
+export async function DELETE(
+  request: NextRequest,
+  context: RouteContext
+) {
+  const { assignmentId } = await context.params;
+
+  return proxyToBackend(
+    request,
+    `/schedules/assignments/${assignmentId}`,
+    {
+      method: "DELETE",
+    }
+  );
+}

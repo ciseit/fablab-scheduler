@@ -17,6 +17,7 @@ import { useParams } from "next/navigation";
 import {
   getAvailabilityRequestByToken,
 } from "@/lib/availabilityRequestApi";
+import { formatUtcForDisplay } from "@/lib/datetimeUtils";
 
 import {
   submitPublicAvailability,
@@ -34,6 +35,8 @@ type AvailabilityRequest = {
   minimum_weekly_hours: number;
   public_token: string;
   status: string;
+  is_accepting_submissions: boolean;
+  has_opened: boolean;
 };
 
 type DayAvailability = {
@@ -104,23 +107,7 @@ const initialAvailability: Record<
 };
 
 function formatDate(dateValue: string) {
-  if (!dateValue) {
-    return "Not specified";
-  }
-
-  const date = new Date(dateValue);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Invalid date";
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
+  return formatUtcForDisplay(dateValue);
 }
 
 function normalizeTime(timeValue: string) {
@@ -131,10 +118,6 @@ function normalizeTime(timeValue: string) {
   return timeValue.length === 5
     ? `${timeValue}:00`
     : timeValue;
-}
-
-function normalizeStatus(status: string) {
-  return status.trim().toLowerCase();
 }
 
 function isValidEmail(email: string) {
@@ -230,30 +213,23 @@ export default function AvailabilitySubmissionPage() {
     [availability]
   );
 
-  const requestIsClosed = useMemo(() => {
-    if (!request) {
-      return false;
-    }
+  // Authoritative: computed backend-side from opens_at/closes_at (the
+  // same checks the submission endpoint itself enforces), so these can
+  // never drift out of sync with what the server will actually accept.
+  const requestNotOpenYet = useMemo(
+    () => request !== null && !request.has_opened,
+    [request]
+  );
 
-    if (
-      normalizeStatus(request.status) ===
-      "closed"
-    ) {
-      return true;
-    }
+  const requestIsClosed = useMemo(
+    () =>
+      request !== null &&
+      request.has_opened &&
+      !request.is_accepting_submissions,
+    [request]
+  );
 
-    const closingDate = new Date(
-      request.closes_at
-    );
-
-    if (
-      Number.isNaN(closingDate.getTime())
-    ) {
-      return false;
-    }
-
-    return closingDate.getTime() < Date.now();
-  }, [request]);
+  const submissionsDisabled = requestNotOpenYet || requestIsClosed;
 
   function updateDay(
     day: DayName,
@@ -422,7 +398,7 @@ export default function AvailabilitySubmissionPage() {
 
     if (
       submitting ||
-      requestIsClosed
+      submissionsDisabled
     ) {
       return;
     }
@@ -562,6 +538,21 @@ export default function AvailabilitySubmissionPage() {
         </section>
 
         <section className="space-y-8 px-6 py-8 sm:px-10">
+          {requestNotOpenYet && (
+            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+              <AlertCircle
+                size={18}
+                className="mt-0.5 shrink-0"
+              />
+
+              <p>
+                This availability request is not
+                open yet. Check back after it
+                opens.
+              </p>
+            </div>
+          )}
+
           {requestIsClosed && (
             <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
               <AlertCircle
@@ -612,7 +603,7 @@ export default function AvailabilitySubmissionPage() {
                 placeholder="Your full name"
                 disabled={
                   submitting ||
-                  requestIsClosed
+                  submissionsDisabled
                 }
                 autoComplete="name"
                 className="h-12 w-full rounded-xl border border-neutral-300 bg-white px-4 text-neutral-950 placeholder:text-neutral-400 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500"
@@ -640,7 +631,7 @@ export default function AvailabilitySubmissionPage() {
                 placeholder="you@example.com"
                 disabled={
                   submitting ||
-                  requestIsClosed
+                  submissionsDisabled
                 }
                 autoComplete="email"
                 className="h-12 w-full rounded-xl border border-neutral-300 bg-white px-4 text-neutral-950 placeholder:text-neutral-400 outline-none transition focus:border-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500"
@@ -671,7 +662,7 @@ export default function AvailabilitySubmissionPage() {
                         }
                         disabled={
                           submitting ||
-                          requestIsClosed
+                          submissionsDisabled
                         }
                         onChange={(event) =>
                           updateDay(day, {
@@ -705,7 +696,7 @@ export default function AvailabilitySubmissionPage() {
                           }
                           disabled={
                             submitting ||
-                            requestIsClosed
+                            submissionsDisabled
                           }
                           onChange={(event) =>
                             updateDay(day, {
@@ -734,7 +725,7 @@ export default function AvailabilitySubmissionPage() {
                           }
                           disabled={
                             submitting ||
-                            requestIsClosed
+                            submissionsDisabled
                           }
                           onChange={(event) =>
                             updateDay(day, {
@@ -762,7 +753,7 @@ export default function AvailabilitySubmissionPage() {
                           }
                           disabled={
                             submitting ||
-                            requestIsClosed
+                            submissionsDisabled
                           }
                           onChange={(event) =>
                             updateDay(day, {
@@ -816,7 +807,7 @@ export default function AvailabilitySubmissionPage() {
               }
               disabled={
                 submitting ||
-                requestIsClosed
+                submissionsDisabled
               }
               placeholder="Add any scheduling notes or restrictions."
               rows={4}
@@ -836,7 +827,7 @@ export default function AvailabilitySubmissionPage() {
             type="submit"
             disabled={
               submitting ||
-              requestIsClosed
+              submissionsDisabled
             }
             className="flex min-w-48 items-center justify-center gap-2 rounded-xl bg-black px-6 py-3 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
           >

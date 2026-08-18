@@ -9,6 +9,31 @@ from app.models.shift import Shift
 from app.schemas.schedule import ScheduleCreate, ScheduleUpdate
 
 
+EDIT_PUBLISHED_SCHEDULE_MESSAGE = (
+    'This schedule is published and is protected from direct changes. '
+    'Use "Edit Published Schedule" to make changes safely -- the '
+    "current public schedule stays exactly as-is until you republish."
+)
+
+
+def require_draft_schedule(schedule: Schedule) -> None:
+    """
+    Guards every direct create/edit/delete action that would mutate a
+    schedule's own shifts/assignments/metadata. Only a schedule with
+    status "draft" (a brand-new schedule, or a working copy created via
+    "Edit Published Schedule") may be changed this way. "published" and
+    "superseded" schedules must go through the edit-copy workflow
+    instead, so the live public schedule is never mutated out from under
+    anyone viewing it.
+    """
+
+    if schedule.status != "draft":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=EDIT_PUBLISHED_SCHEDULE_MESSAGE,
+        )
+
+
 def _get_campaign_or_404(db: Session, campaign_id: int) -> CollectionCampaign:
     campaign = (
         db.query(CollectionCampaign)
@@ -56,6 +81,7 @@ def update_schedule(
     schedule_data: ScheduleUpdate,
 ) -> Schedule:
     schedule = get_schedule_or_404(db, schedule_id)
+    require_draft_schedule(schedule)
 
     update_data = schedule_data.model_dump(exclude_unset=True)
 
@@ -85,6 +111,30 @@ def get_schedule_or_404(db: Session, schedule_id: int) -> Schedule:
         )
 
     return schedule
+
+
+def delete_schedule(db: Session, schedule_id: int) -> None:
+    schedule = get_schedule_or_404(db, schedule_id)
+    require_draft_schedule(schedule)
+
+    shift_ids = [
+        shift_id
+        for (shift_id,) in db.query(Shift.id).filter(
+            Shift.schedule_id == schedule_id
+        )
+    ]
+
+    db.query(Assignment).filter(
+        Assignment.schedule_id == schedule_id
+    ).delete(synchronize_session=False)
+
+    if shift_ids:
+        db.query(Shift).filter(Shift.id.in_(shift_ids)).delete(
+            synchronize_session=False
+        )
+
+    db.delete(schedule)
+    db.commit()
 
 
 def list_schedules(db: Session) -> list[dict]:
@@ -124,6 +174,7 @@ def list_schedules(db: Session) -> list[dict]:
                 "status": schedule.status,
                 "published_at": schedule.published_at,
                 "public_token": schedule.public_token,
+                "editing_source_id": schedule.editing_source_id,
                 "campaign_name": (
                     campaign_names.get(schedule.campaign_id)
                     if schedule.campaign_id
